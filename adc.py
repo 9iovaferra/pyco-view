@@ -127,7 +127,7 @@ def plot_data(
 	plt.ylim(yLowerLim,yUpperLim)
 	plt.ylabel('Voltage (mV)')
 	plt.legend(loc="lower right")
-	plt.savefig(f"./Data/plot_{filestamp}.png")
+	plt.savefig(f"./Data/adc_plot_{filestamp}.png")
 
 def parse_args(args: list) -> dict:
 	options = dict.fromkeys([
@@ -142,6 +142,8 @@ def parse_args(args: list) -> dict:
 		for arg in args:
 			if arg.isdigit():
 				options["captures"] = int(arg)
+			else:
+				options["captures"] = 1
 		options["plot"] = True if "plot" in args else False
 		options["log"] = True if "log" in args else False
 		options["dformat"] = "csv" if "csv" in args else "txt"
@@ -167,12 +169,13 @@ def main():
 
 	""" Creating data folder """
 	try:
-		Path("~/Documents/pyco-view/Data").expanduser().mkdir(exist_ok=True)
+		dataPath = Path("~/Documents/pyco-view/Data").expanduser()
+		dataPath.mkdir(exist_ok=True)
 	except PermissionError:
 		print("Permission Error: cannot write to this location.")
 		if runtimeOptions["log"]:
 			log(loghandle,
-	   			f"==> (!) Permission Error: cannot write to {str(Path('~/Documents/pyco-view/Data').expanduser())}.",
+	   			f"==> (!) Permission Error: cannot write to {str(dataPath)}.",
 	   			time=True)
 		sys.exit(1)
 	
@@ -234,10 +237,10 @@ def main():
 	""" Setting up trigger on channel A
 	enabled = 1
 	source = ChA = 0
-	threshold = 26000 ADC counts ~=400mV, see thresholdmV below
+	threshold = 10000 ADC counts ~=300mV, see thresholdmV below
 	direction = PS6000_FALLING = 3
 	delay = 0s
-	auto Trigger = 1000ms
+	auto Trigger = 10000ms
 	"""
 	status["trigger"] = ps.ps6000SetSimpleTrigger(
 			chandle, 1, 0, thresholdADC, 3, delaySeconds, autoTrigms
@@ -267,8 +270,8 @@ def main():
 	""" Maximum ADC count value """
 	maxADC = c_int16(32512)
 
-	""" Creating data output file and log file if requested """	
-	with open(f"./Data/data_{timestamp}.{runtimeOptions['dformat']}", "a") as out:
+	""" Creating data output file """	
+	with open(f"./Data/adc_data_{timestamp}.{runtimeOptions['dformat']}", "a") as out:
 		out.write("cap\tamplitude (mV)\tpeak2peak (mV)\tcharge (C)\n")
 
 	for icap in range(runtimeOptions["captures"]):
@@ -368,6 +371,7 @@ def main():
 				bufferChCmV, gateOpen["index"], gateClosed["index"],
 				timeIntervalns.value, terminalResist
 				)
+
 		""" Logging capture results """
 		if runtimeOptions["log"]:
 			log(loghandle, f"amplitude: {amplitude:.2f}mV")
@@ -402,14 +406,12 @@ def main():
 	""" Logging exit status & data location """
 	if runtimeOptions["log"]:
 		log(loghandle, "==> Job finished without errors. Data and/or plots saved to:", time=True)
-		log(loghandle, f"{str(Path('~/Documents/pyco-view/Data').expanduser())}")
+		log(loghandle, f"{str(dataPath)}")
 		log(loghandle, "==> PicoScope exit status:", time=True)
 		for key, value in status.items():
-			log(loghandle, "{: <15} {: <15}".format(key, value))
+			colWidth = len(key)
+			log(loghandle, "{: <{w}} {: <2}".format(key, value, w=colWidth))
 
-#	""" Display status returns """
-#	if runtimeOptions["log"]:
-#		print_status(status)
 
 if __name__ == "__main__":
 	sys.exit(main())
