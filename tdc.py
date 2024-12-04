@@ -79,9 +79,8 @@ def plot_data(
 		bufferChCmV: Array[c_int16],
 		gate: dict,
 		time: np.ndarray,
+		deltaT: float,
 		timeIntervalns: float,
-		# peakToPeak: float,
-		# charge: float,
 		filestamp: str,
 		) -> None:
 	buffersMin = min(min(bufferChAmV), min(bufferChCmV))
@@ -99,24 +98,25 @@ def plot_data(
 			 color="green", label="Channel C (gate)")
 	
 	""" Bounds from gate """
-	# plt.fill_between(
-	# 		np.arange(gateOpen["ns"], gateClosed["ns"], timeIntervalns.value),
-	# 		bufferChCmV[gateOpen["index"]:gateClosed["index"]], max(bufferChCmV),
-	# 		color="lightgrey", label=f"Total deposited charge\n{charge:.2f} C"
-	# 		)
 	plt.plot([gate["chA"]["open"]["ns"]] * 2,
-			 [gate["chA"]["open"]["mV"], max(bufferChAmV)],
+			 [gate["chA"]["open"]["mV"], yLowerLim],
 			 linestyle="--", color="darkblue")
 	plt.plot([gate["chA"]["closed"]["ns"]] * 2,
-			 [gate["chA"]["closed"]["mV"], max(bufferChAmV)],
+			 [gate["chA"]["closed"]["mV"], yLowerLim],
 			 linestyle="--", color="darkblue")
 
 	plt.plot([gate["chC"]["open"]["ns"]] * 2,
-			 [gate["chC"]["open"]["mV"], max(bufferChCmV)],
+			 [gate["chC"]["open"]["mV"], yLowerLim],
 			 linestyle="--", color="darkgreen")
 	plt.plot([gate["chC"]["closed"]["ns"]] * 2,
-			 [gate["chC"]["closed"]["mV"], max(bufferChCmV)],
+			 [gate["chC"]["closed"]["mV"], yLowerLim],
 			 linestyle="--", color="darkgreen")
+
+	plt.fill_between(
+			np.arange(gate["chA"]["open"]["ns"], gate["chC"]["open"]["ns"], timeIntervalns),
+			yLowerLim, yUpperLim,
+			color="lightgrey", label=f"Delay\n{deltaT:.2f} ns"
+			)
 	
 	# """ Threshold """
 	# plt.axhline(y=thresholdmV, linestyle="--", color="black",
@@ -140,21 +140,14 @@ def plot_data(
 			 gate["chC"]["closed"]["mV"],
 			 color="darkgreen", marker="<",
 			 label=f"Gate C closed\n{gate['chC']['closed']['ns']:.2f} ns")
-	
-	# """ Amplitude and Peak-To-Peak """
-	# plt.plot([time[bufferChCmV.index(max(bufferChCmV))]] * 2,
-	# 		 [max(bufferChCmV), min(bufferChCmV)],
-	# 		 color="black")
-	# plt.text(time[bufferChCmV.index(max(bufferChCmV))] + 0.5,
-	# 		 max(bufferChCmV) - peakToPeak / 2,
-	# 		 f"Peak-to-peak\n{peakToPeak:.2f} mV")
-	
+		
 	# """ Threshold line """
 	# plt.plot(time.tolist()[bufferChAmV.index(min(bufferChAmV))], min(bufferChAmV), "ko")
 
 	plt.xlabel('Time (ns)')
-	plt.ylim(yLowerLim,yUpperLim)
 	plt.ylabel('Voltage (mV)')
+	plt.xlim(0, int(max(time)))
+	plt.ylim(yLowerLim,yUpperLim)
 	plt.legend(loc="lower right")
 	plt.savefig(f"./Data/tdc_plot_{filestamp}.png")
 
@@ -171,6 +164,7 @@ def parse_args(args: list) -> dict:
 		for arg in args:
 			if arg.isdigit():
 				options["captures"] = int(arg)
+				break
 			else:
 				options["captures"] = 1
 		options["plot"] = True if "plot" in args else False
@@ -228,6 +222,19 @@ def main():
 	maxSamples = preTrigSamples + postTrigSamples
 	timebase = 1
 	terminalResist = 50
+
+	""" Logging runtime parameters """
+	if runtimeOptions["log"]:
+		log(loghandle, "==> Running acquisition with parameters:", time=True)
+		params = dict(zip(
+			["delaySeconds", "chRangemV", "analogOffset", "thresholdADC",
+			"autoTrigms", "preTrigSamples", "postTrigSamples", "maxSamples",
+			"timebase", "terminalResist"],
+			[0, 500, 0.45, 10000, 10000, 50, 250, maxSamples, 1, 5, 0]
+			))
+		colWidth = max([len(k) for k in params.keys()])
+		for key, value in params.items():
+			log(loghandle, f"{key: <{colWidth}} {value:}")
 
 	status["openUnit"] = ps.ps6000OpenUnit(byref(chandle), None)
 	assert_pico_ok(status["openUnit"])
@@ -318,19 +325,6 @@ def main():
 			ps.PS6000_THRESHOLD_DIRECTION["PS6000_NONE"]
 			)
 	assert_pico_ok(status["setTriggerChannelDirections"])
-
-	# """ Setting up trigger on channel A
-	# enabled = 1
-	# source = ChA = 0
-	# threshold = 10000 ADC counts ~=??mV, see thresholdmV below
-	# direction = PS6000_FALLING = 3
-	# delay = 0s
-	# auto Trigger = 10000ms
-	# """
-	# status["trigger"] = ps.ps6000SetSimpleTrigger(
-	# 		chandle, 1, 0, thresholdADC, 3, delaySeconds, autoTrigms
-	# 		)
-	# assert_pico_ok(status["trigger"])
 	
 	""" Get timebase info & number of pre/post trigger samples to be collected
 	noSamples = maxSamples
@@ -355,14 +349,14 @@ def main():
 	""" Maximum ADC count value """
 	maxADC = c_int16(32512)
 
-	# """ Creating data output file """	
-	# with open(f"./Data/tdc_data_{timestamp}.{runtimeOptions['dformat']}", "a") as out:
-	# 	out.write("cap\tamplitude (mV)\tpeak2peak (mV)\tcharge (C)\n")
+	""" Creating data output file """	
+	with open(f"./Data/tdc_data_{timestamp}.{runtimeOptions['dformat']}", "a") as out:
+		out.write("cap\tdeltaT (ns)\n")
 
 	for icap in range(runtimeOptions["captures"]):
 		""" Logging capture """
 		if runtimeOptions["log"]:
-			log(loghandle, f"==> Beginning capture no. {icap}", time=True)
+			log(loghandle, f"==> Beginning capture no. {icap + 1}", time=True)
 		
 		""" Run block capture
 		number of pre-trigger samples = preTrigSamples
@@ -453,24 +447,26 @@ def main():
 			log(loghandle,
 				f"gate off: {gate['chA']['closed']['mV']:.2f}mV, {gate['chA']['closed']['ns']:.2f}ns @ {gate['chA']['closed']['index']}")
 
-		# """ Print data to file """
-		# with open(f"./Data/data_{timestamp}.txt", "a") as out:
-		# 	out.write(f"{icap + 1}\t{amplitude:.9f}\t{peakToPeak:.9f}\t{charge:.9f}\n")
+		deltaT = gate["chC"]["open"]["ns"] - gate["chA"]["open"]["ns"]
+		""" Print data to file """
+		with open(f"./Data/tdc_data_{timestamp}.txt", "a") as out:
+			out.write(f"{icap + 1}\t{deltaT:.9f}\n")
 
 		if runtimeOptions["plot"]:
 			plot_data(
-					bufferChAmV, bufferChCmV, gate, time, timeIntervalns,
+					bufferChAmV, bufferChCmV, gate, time, deltaT, timeIntervalns.value,
 					f"{timestamp}_{str(icap)}"
 					)
 
 		""" Checking if everything is fine """
-		for s in status.values():
-			if s != 0:
-				print("Something went wrong!")
-				print_status(status)
-				if runtimeOptions["log"]:
-					log(loghandle, "==> (!) Something went wrong! PicoScope status:", time=True)
-				sys.exit(1)
+		if not 0 in status.values():
+			""" Logging error(s) """
+			if runtimeOptions["log"]:
+				log(loghandle, "==> Something went wrong! PicoScope status:", time=True)
+				colWidth = max([len(k) for k in status.keys()])
+				for key, value in status.items():
+					log(loghandle, f"{key: <{colWidth}} {value:}")
+			sys.exit(1)
 
 	status["stop"] = ps.ps6000Stop(chandle)
 	assert_pico_ok(status["stop"])
@@ -484,9 +480,9 @@ def main():
 			"==> Job finished without errors. Data and/or plots saved to:", time=True)
 		log(loghandle, f"{str(dataPath)}")
 		log(loghandle, "==> PicoScope exit status:", time=True)
+		colWidth = max([len(k) for k in status.keys()])
 		for key, value in status.items():
-			colWidth = len(key)
-			log(loghandle, "{: <{w}} {: <2}".format(key, value, w=colWidth))
+			log(loghandle, f"{key: <{colWidth}} {value:}")
 
 
 if __name__ == "__main__":
