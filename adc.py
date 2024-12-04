@@ -73,10 +73,10 @@ def plot_data(
 		bufferChCmV: Array[c_int16],
 		gateOpen: dict,
 		gateClosed: dict,
-		timeIntervalns: float,
-		peakToPeak: float,
 		time: np.ndarray,
+		timeIntervalns: float,
 		charge: float,
+		peakToPeak: float,
 		filestamp: str,
 		) -> None:
 	yLowerLim = min(bufferChAmV) + min(bufferChAmV) * 0.1
@@ -102,7 +102,7 @@ def plot_data(
 	plt.plot([gateClosed["ns"]] * 2, [gateClosed["mV"], max(bufferChCmV)],
 			 linestyle="--", color="black")
 	
-	""" Threshold """
+	# """ Threshold """
 	# plt.axhline(y=thresholdmV, linestyle="--", color="black",
 	#			label=f"Channel A threshold\n{thresholdmV:.2f} mV")
 	
@@ -142,6 +142,7 @@ def parse_args(args: list) -> dict:
 		for arg in args:
 			if arg.isdigit():
 				options["captures"] = int(arg)
+				break
 			else:
 				options["captures"] = 1
 		options["plot"] = True if "plot" in args else False
@@ -209,8 +210,9 @@ def main():
 			"timebase", "terminalResist"],
 			[0, 500, 0.45, 10000, 10000, 50, 250, maxSamples, 1, 5, 0]
 			))	
+		colWidth = max([len(k) for k in params.keys()])
 		for key, value in params.items():
-			log(loghandle, "{: <15} {: <15}".format(key, value))
+			log(loghandle, f"{key: <{colWidth}} {value:}")
 
 	status["openUnit"] = ps.ps6000OpenUnit(byref(chandle), None)
 	assert_pico_ok(status["openUnit"])
@@ -277,7 +279,7 @@ def main():
 	for icap in range(runtimeOptions["captures"]):
 		""" Logging capture """
 		if runtimeOptions["log"]:
-			log(loghandle, f"==> Beginning capture no. {icap}", time=True)
+			log(loghandle, f"==> Beginning capture no. {icap + 1}", time=True)
 		
 		""" Run block capture
 		number of pre-trigger samples = preTrigSamples
@@ -389,13 +391,14 @@ def main():
 					)
 
 		""" Checking if everything is fine """
-		for s in status.values():
-			if s != 0:
-				print("Something went wrong!")
-				print_status(status)
-				if runtimeOptions["log"]:
-					log(loghandle, "==> (!) Something went wrong! PicoScope status:", time=True)
-				sys.exit(1)
+		if not 0 in status.values():
+			""" Logging error(s) """
+			if runtimeOptions["log"]:
+				log(loghandle, "==> Something went wrong! PicoScope status:", time=True)
+				colWidth = max([len(k) for k in status.keys()])
+				for key, value in status.items():
+					log(loghandle, f"{key: <{colWidth}} {value:}")
+			sys.exit(1)
 
 	status["stop"] = ps.ps6000Stop(chandle)
 	assert_pico_ok(status["stop"])
@@ -408,9 +411,9 @@ def main():
 		log(loghandle, "==> Job finished without errors. Data and/or plots saved to:", time=True)
 		log(loghandle, f"{str(dataPath)}")
 		log(loghandle, "==> PicoScope exit status:", time=True)
+		colWidth = max([len(k) for k in status.keys()])
 		for key, value in status.items():
-			colWidth = len(key)
-			log(loghandle, "{: <{w}} {: <2}".format(key, value, w=colWidth))
+			log(loghandle, f"{key: <{colWidth}} {value:}")
 
 
 if __name__ == "__main__":
