@@ -2,19 +2,12 @@
 from ctypes import c_int16, c_uint16, c_int32, c_float, Array, byref
 import numpy as np
 from picosdk.ps6000 import ps6000 as ps
+from pycoviewlib.functions import *
 import matplotlib.pyplot as plt
 from picosdk.functions import adc2mV, assert_pico_ok
 from datetime import datetime
 import sys
 from pathlib import Path
-
-def print_status(status: dict) -> None:
-	if bool(status):
-		print("PicoScope Exit Status:")
-		for key, value in status.items():
-			print("{: <15} {: <15}".format(key, value))
-	else:
-		print("No status to show.")
 
 def detect_gate_open_closed(
 		buffer: Array[c_int16],
@@ -32,8 +25,6 @@ def detect_gate_open_closed(
 		"open": {"mV": threshold, "ns": 0.0, "index": 0},
 		"closed": {"mV": threshold, "ns": 0.0, "index": 0}
 		}
-	# gateOpen = {"mV": threshold, "ns": 0.0, "index": 0}
-	# gateClosed = {"mV": threshold, "ns": 0.0, "index": 0} 
 	hit = 0
 	minValueIndex = buffer.index(min(buffer))
 	minDifference = min(buffer) - threshold
@@ -43,8 +34,6 @@ def detect_gate_open_closed(
 			minDifference = buffer[i] - threshold
 	gateChX["open"]["ns"] = time[hit]
 	gateChX["open"]["index"] = hit
-	# gateOpen["ns"] = time[hit]
-	# gateOpen["index"] = hit
 	minDifference = min(buffer) - threshold
 	for i in range(minValueIndex, maxSamples):
 		if abs(buffer[i] - threshold) < abs(minDifference):
@@ -54,25 +43,6 @@ def detect_gate_open_closed(
 	gateChX["closed"]["index"] = hit
 	
 	return gateChX
-
-def calculate_charge(
-		buffer: Array[c_int16],
-		gateOpen: dict,
-		gateClosed: dict,
-		timeIntervalns: float,
-		resistance: int
-		) -> float:
-	"""
-	Total charge deposited by the particle in the detector.
-	It is defined as the integral of voltage with respect to time,
-	multiplied by dt and divided by the termination resistance.
-	"""
-	charge = 0.0
-	for i in range(gateOpen, gateClosed):
-		charge += abs(buffer[i])	
-	charge *= (timeIntervalns / resistance)
-	
-	return charge
 
 def plot_data(
 		bufferChAmV: Array[c_int16],
@@ -150,28 +120,6 @@ def plot_data(
 	plt.ylim(yLowerLim,yUpperLim)
 	plt.legend(loc="lower right")
 	plt.savefig(f"./Data/tdc_plot_{filestamp}.png")
-
-def parse_args(args: list) -> dict:
-	options = dict.fromkeys([
-		"captures", "plot", "log", "dformat"
-		])
-	if len(args) == 1:
-		options["captures"] = 1
-		options["plot"] = False
-		options["log"] = False
-		options["dformat"] = "txt"
-	else:
-		for arg in args:
-			if arg.isdigit():
-				options["captures"] = int(arg)
-				break
-			else:
-				options["captures"] = 1
-		options["plot"] = True if "plot" in args else False
-		options["log"] = True if "log" in args else False
-		options["dformat"] = "csv" if "csv" in args else "txt"
-	
-	return options
 
 def log(loghandle: str, entry: str, time=False) -> None:
 	with open(f"./Data/{loghandle}", "a") as logfile:

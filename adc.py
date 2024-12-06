@@ -2,77 +2,17 @@
 from ctypes import c_int16, c_int32, c_float, Array, byref
 import numpy as np
 from picosdk.ps6000 import ps6000 as ps
+from pycoviewlib.functions import *
 import matplotlib.pyplot as plt
 from picosdk.functions import adc2mV, assert_pico_ok
 from datetime import datetime
 import sys
 from pathlib import Path
 
-def print_status(status: dict) -> None:
-	if bool(status):
-		print("PicoScope Exit Status:")
-		for key, value in status.items():
-			print("{: <15} {: <15}".format(key, value))
-	else:
-		print("No status to show.")
-
-def detect_gate_open_closed(
-		buffer: Array[c_int16],
-		time: np.ndarray[np.float32],
-		threshold: float,
-		maxSamples: int,
-		timeIntervalns: float
-		) -> tuple[dict[str, float | int]]:
-	"""
-	minValueIndex = array index of the buffer's negative peak
-		(most negative value).
-	Threshold hits are returned as (voltage, time) coordinates.
-	"""
-	gateOpen = {"mV": threshold, "ns": 0.0, "index": 0}
-	gateClosed = {"mV": threshold, "ns": 0.0, "index": 0} 
-	hit = 0
-	minValueIndex = buffer.index(min(buffer))
-	minDifference = min(buffer) - threshold
-	for i in range(minValueIndex):
-		if abs(buffer[i] - threshold) < abs(minDifference):
-			hit = i
-			minDifference = buffer[i] - threshold
-	gateOpen["ns"] = time[hit]
-	gateOpen["index"] = hit
-	minDifference = min(buffer) - threshold
-	for i in range(minValueIndex, maxSamples):
-		if abs(buffer[i] - threshold) < abs(minDifference):
-			hit = i
-			minDifference = buffer[i] - threshold
-	gateClosed["ns"] = time[hit]
-	gateClosed["index"] = hit
-	
-	return gateOpen, gateClosed
-
-def calculate_charge(
-		buffer: Array[c_int16],
-		gateOpen: dict,
-		gateClosed: dict,
-		timeIntervalns: float,
-		resistance: int
-		) -> float:
-	"""
-	Total charge deposited by the particle in the detector.
-	It is defined as the integral of voltage with respect to time,
-	multiplied by dt and divided by the termination resistance.
-	"""
-	charge = 0.0
-	for i in range(gateOpen, gateClosed):
-		charge += abs(buffer[i])	
-	charge *= (timeIntervalns / resistance)
-	
-	return charge
-
 def plot_data(
 		bufferChAmV: Array[c_int16],
 		bufferChCmV: Array[c_int16],
-		gateOpen: dict,
-		gateClosed: dict,
+		gate: dict,
 		time: np.ndarray,
 		timeIntervalns: float,
 		charge: float,
@@ -93,13 +33,13 @@ def plot_data(
 	
 	""" Charge area + bounds from gate """
 	plt.fill_between(
-			np.arange(gateOpen["ns"], gateClosed["ns"], timeIntervalns.value),
-			bufferChCmV[gateOpen["index"]:gateClosed["index"]], max(bufferChCmV),
+			np.arange(gate["open"]["ns"], gate["closed"]["ns"], timeIntervalns.value),
+			bufferChCmV[gate["open"]["index"]:gate["closed"]["index"]], max(bufferChCmV),
 			color="lightgrey", label=f"Total deposited charge\n{charge:.2f} C"
 			)
-	plt.plot([gateOpen["ns"]] * 2, [gateOpen["mV"], max(bufferChCmV)],
+	plt.plot([gate["open"]["ns"]] * 2, [gate["open"]["mV"], max(bufferChCmV)],
 			 linestyle="--", color="black")
-	plt.plot([gateClosed["ns"]] * 2, [gateClosed["mV"], max(bufferChCmV)],
+	plt.plot([gate["closed"]["ns"]] * 2, [gate["closed"]["mV"], max(bufferChCmV)],
 			 linestyle="--", color="black")
 	
 	# """ Threshold """
@@ -107,49 +47,28 @@ def plot_data(
 	#			label=f"Channel A threshold\n{thresholdmV:.2f} mV")
 	
 	""" Gate open and closed points """
-	plt.plot(gateOpen["ns"], gateOpen["mV"],
-			 color="black", marker=">", label=f"Gate open\n{gateOpen['ns']:.2f} ns")
-	plt.plot(gateClosed["ns"], gateClosed["mV"],
-			 color="black", marker="<", label=f"Gate closed\n{gateClosed['ns']:.2f} ns")
+	plt.plot(gate["open"]["ns"], gate["open"]["mV"],
+			 color="black", marker=">", label=f"Gate open\n{gate['open']['ns']:.2f} ns")
+	plt.plot(gate["closed"]["ns"], gate["closed"]["mV"],
+			 color="black", marker="<", label=f"Gate closed\n{gate['closed']['ns']:.2f} ns")
 	
 	""" Amplitude and Peak-To-Peak """
-	plt.plot([time[bufferChCmV.index(max(bufferChCmV))]] * 2,
-			 [max(bufferChCmV), min(bufferChCmV)],
-			 color="black")
+	plt.annotate(
+			"",
+			xy=(time[bufferChCmV.index(max(bufferChCmV))], max(bufferChCmV)),
+			xytext=(time[bufferChCmV.index(max(bufferChCmV))], peakToPeak * (-1)),
+			fontsize=12,
+			arrowprops=dict(edgecolor="black", arrowstyle="<->", shrinkA=0, shrinkB=0)
+			)
 	plt.text(time[bufferChCmV.index(max(bufferChCmV))] + 0.5,
 			 max(bufferChCmV) - peakToPeak / 2,
 			 f"Peak-to-peak\n{peakToPeak:.2f} mV")
-	
-	""" Threshold line """
-	# plt.plot(time.tolist()[bufferChAmV.index(min(bufferChAmV))], min(bufferChAmV), "ko")
 
 	plt.xlabel('Time (ns)')
 	plt.ylim(yLowerLim,yUpperLim)
 	plt.ylabel('Voltage (mV)')
 	plt.legend(loc="lower right")
 	plt.savefig(f"./Data/adc_plot_{filestamp}.png")
-
-def parse_args(args: list) -> dict:
-	options = dict.fromkeys([
-		"captures", "plot", "log", "dformat"
-		])
-	if len(args) == 1:
-		options["captures"] = 1
-		options["plot"] = False
-		options["log"] = False
-		options["dformat"] = "txt"
-	else:
-		for arg in args:
-			if arg.isdigit():
-				options["captures"] = int(arg)
-				break
-			else:
-				options["captures"] = 1
-		options["plot"] = True if "plot" in args else False
-		options["log"] = True if "log" in args else False
-		options["dformat"] = "csv" if "csv" in args else "txt"
-	
-	return options
 
 def log(loghandle: str, entry: str, time=False) -> None:
 	with open(f"./Data/{loghandle}", "a") as logfile:
@@ -166,7 +85,7 @@ def main():
 	
 	""" Creating loghandle if required """
 	if runtimeOptions["log"]:
-		loghandle: str = f"log_{timestamp}.txt"
+		loghandle: str = f"adc_log_{timestamp}.txt"
 
 	""" Creating data folder """
 	try:
@@ -273,7 +192,8 @@ def main():
 	maxADC = c_int16(32512)
 
 	""" Creating data output file """	
-	with open(f"./Data/adc_data_{timestamp}.{runtimeOptions['dformat']}", "a") as out:
+	dathandle = f"./Data/adc_data_{timestamp}.{runtimeOptions['dformat']}"
+	with open(dathandle, "a") as out:
 		out.write("cap\tamplitude (mV)\tpeak2peak (mV)\tcharge (C)\n")
 
 	for icap in range(runtimeOptions["captures"]):
@@ -356,21 +276,21 @@ def main():
 				)
 
 		""" Detect datapoints where the threshold was hit (both falling & rising edge) """
-		gateOpen, gateClosed = detect_gate_open_closed(
+		gate = detect_gate_open_closed(
 				bufferChAmV, time, thresholdmV, maxSamples, timeIntervalns.value
 				)
 		""" Logging threshold hits """
 		if runtimeOptions["log"]:
 			log(loghandle,
-				f"gate on: {gateOpen['mV']:.2f}mV, {gateOpen['ns']:.2f}ns @ {gateOpen['index']}",)
+				f"gate on: {gate['open']['mV']:.2f}mV, {gate['open']['ns']:.2f}ns @ {gate['open']['index']}",)
 			log(loghandle,
-				f"gate off: {gateClosed['mV']:.2f}mV, {gateClosed['ns']:.2f}ns @ {gateClosed['index']}")
+				f"gate off: {gate['closed']['mV']:.2f}mV, {gate['closed']['ns']:.2f}ns @ {gate['closed']['index']}")
 	
 		""" Calculating relevant data """
 		amplitude = abs(min(bufferChCmV))
 		peakToPeak = abs(min(bufferChCmV)) - abs(max(bufferChCmV))
 		charge = calculate_charge(
-				bufferChCmV, gateOpen["index"], gateClosed["index"],
+				bufferChCmV, gate["open"]["index"], gate["closed"]["index"],
 				timeIntervalns.value, terminalResist
 				)
 
@@ -381,13 +301,13 @@ def main():
 			log(loghandle, f"charge: {charge:.2f}C")
 
 		""" Print data to file """
-		with open(f"./Data/data_{timestamp}.txt", "a") as out:
+		with open(dathandle, "a") as out:
 			out.write(f"{icap + 1}\t{amplitude:.9f}\t{peakToPeak:.9f}\t{charge:.9f}\n")
 
 		if runtimeOptions["plot"]:
 			plot_data(
-					bufferChAmV, bufferChCmV, gateOpen, gateClosed, timeIntervalns,
-					peakToPeak, time, charge, f"{timestamp}_{str(icap)}"
+					bufferChAmV, bufferChCmV, gate, time, timeIntervalns,
+					charge, peakToPeak, f"{timestamp}_{str(icap)}"
 					)
 
 		""" Checking if everything is fine """
