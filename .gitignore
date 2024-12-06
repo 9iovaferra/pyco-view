@@ -1,6 +1,9 @@
 # Data folder
 /Data
 
+# __pycache__ folder
+/pycoviewlib/__pycache__
+
 # Misc
 /constants.py
 
