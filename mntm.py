@@ -6,43 +6,9 @@ from pycoviewlib.functions import *
 import matplotlib.pyplot as plt
 from picosdk.functions import adc2mV, assert_pico_ok
 from datetime import datetime
+from time import time as get_time	# benchmarking
 import sys
 from pathlib import Path
-
-def detect_gate_open_closed(
-		buffer: Array[c_int16],
-		time: np.ndarray[np.float32],
-		threshold: float,
-		maxSamples: int,
-		timeIntervalns: float
-		) -> dict[str, float | int]:
-	"""
-	minValueIndex = array index of the buffer's negative peak
-		(most negative value).
-	Threshold hits are returned as (voltage, time) coordinates.
-	"""
-	gateChX = {
-		"open": {"mV": threshold, "ns": 0.0, "index": 0},
-		"closed": {"mV": threshold, "ns": 0.0, "index": 0}
-		}
-	hit = 0
-	minValueIndex = buffer.index(min(buffer))
-	minDifference = min(buffer) - threshold
-	for i in range(minValueIndex):
-		if abs(buffer[i] - threshold) < abs(minDifference):
-			hit = i
-			minDifference = buffer[i] - threshold
-	gateChX["open"]["ns"] = time[hit]
-	gateChX["open"]["index"] = hit
-	minDifference = min(buffer) - threshold
-	for i in range(minValueIndex, maxSamples):
-		if abs(buffer[i] - threshold) < abs(minDifference):
-			hit = i
-			minDifference = buffer[i] - threshold
-	gateChX["closed"]["ns"] = time[hit]
-	gateChX["closed"]["index"] = hit
-	
-	return gateChX
 
 def plot_data(
 		bufferChAmV: Array[c_int16],
@@ -62,7 +28,7 @@ def plot_data(
 	yUpperLim = buffersMax + buffersMax * 0.4
 	# yTicks = np.arange(-1000, 0, 50)
 
-	plt.figure(figsize=(10,6))
+	plt.figure(figsize=(12,6))
 		
 	""" Channel signals """
 	plt.plot(time, bufferChAmV[:],
@@ -158,7 +124,18 @@ def plot_data(
 	plt.xlim(0, int(max(time)))
 	plt.ylim(yLowerLim,yUpperLim)
 	plt.legend(loc="lower right")
-	# plt.savefig(f"./Data/mntm_plot_{filestamp}.png")
+	plt.savefig(f"./Data/mntm_plot_{filestamp}.png")
+
+def make_histogram(datahandle: str) -> None:
+	with open(datahandle, "r") as f:
+		data = [float(line.split()[1]) for line in f.readlines()[1:]]
+	xrange = (int(min(data)) - 1, int(max(data)) + 1)
+	counts, bins = np.histogram(data, range=xrange)
+	plt.hist(bins[:-1], bins, weights=counts)
+	plt.xlim(xrange)
+	plt.ylim(0, max(counts))
+	plt.xlabel("Delay (ns)")
+	plt.ylabel("Counts")
 	plt.show()
 
 def log(loghandle: str, entry: str, time=False) -> None:
@@ -190,6 +167,11 @@ def main():
 	   			time=True)
 		sys.exit(1)
 	
+	""" Creating data output file """	
+	datahandle: str = f"./Data/mntm_data_{timestamp}.{runtimeOptions['dformat']}"
+	with open(datahandle, "a") as out:
+		out.write("cap\t\tdeltaT (ns)\n")
+	
 	""" Creating chandle and status. Setting acquisition parameters.
 	Opening ps6000 connection: returns handle for future use in API functions
 	"""
@@ -205,8 +187,8 @@ def main():
 	analogOffset = 0.45
 	thresholdADC = 10000
 	autoTrigms = 10000
-	preTrigSamples = 100
-	postTrigSamples = 250
+	preTrigSamples = 70
+	postTrigSamples = 150
 	maxSamples = preTrigSamples + postTrigSamples
 	timebase = 2
 	terminalResist = 50
@@ -231,18 +213,18 @@ def main():
 	handle		chandle
 	channel		ChA=0, ChB=1, ChC=2, ChD=3
 	enabled		1
-	coupling	DC=1 (50ohm)
+	coupling	DC=2 (50ohm)
 	range		500mV=5
 	offset		450mV (analogOffset)
 	bandwidth	Full=0
 	"""
-	status["setChA"] = ps.ps6000SetChannel(chandle, 0, 1, 1, chRange, analogOffset, 0)
+	status["setChA"] = ps.ps6000SetChannel(chandle, 0, 1, 2, chRange, analogOffset, 0)
 	assert_pico_ok(status["setChA"])
-	status["setChB"] = ps.ps6000SetChannel(chandle, 1, 1, 1, chRange, analogOffset, 0)
+	status["setChB"] = ps.ps6000SetChannel(chandle, 1, 1, 2, chRange, analogOffset, 0)
 	assert_pico_ok(status["setChB"])
-	status["setChC"] = ps.ps6000SetChannel(chandle, 2, 1, 1, chRange, analogOffset, 0)
+	status["setChC"] = ps.ps6000SetChannel(chandle, 2, 1, 2, chRange, analogOffset, 0)
 	assert_pico_ok(status["setChC"])
-	status["setChD"] = ps.ps6000SetChannel(chandle, 3, 1, 1, chRange, analogOffset, 0)
+	status["setChD"] = ps.ps6000SetChannel(chandle, 3, 1, 2, chRange, analogOffset, 0)
 	assert_pico_ok(status["setChD"])
 	
 	""" Setting up trigger on channel A and B
@@ -250,50 +232,97 @@ def main():
 		(i.e. both must be triggered at the same time)
 	nTrigConditions = 2
 	channel directions = FALLING (both)
-	threshold = 15000 ADC counts ~=-300mV (both)
-	hysteresis = 1.5% of thresholdADC
+	threshold = 10000 ADC counts ~=-300mV (both)
+	hysteresis = 0
 		(distance by which signal must fall above/below the
 		lower/upper threshold in order to re-arm the trigger)
 	auto Trigger = 10000ms (both)
 	delay = 0s (both)
 	"""
-	triggerConditions = ps.PS6000_TRIGGER_CONDITIONS(
-			ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_TRUE"],
-			ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_TRUE"],
-			ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_DONT_CARE"],
-			ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_DONT_CARE"],
-			ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_DONT_CARE"],
-			ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_DONT_CARE"],
-			ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_DONT_CARE"]
-			)
+	if runtimeOptions["trigs"] == 2:
+		triggerConditions = ps.PS6000_TRIGGER_CONDITIONS(
+				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_TRUE"],
+				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_TRUE"],
+				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_DONT_CARE"],
+				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_DONT_CARE"],
+				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_DONT_CARE"],
+				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_DONT_CARE"],
+				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_DONT_CARE"]
+				)
+	else:
+		triggerConditions = ps.PS6000_TRIGGER_CONDITIONS(
+				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_TRUE"],
+				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_TRUE"],
+				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_TRUE"],
+				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_TRUE"],
+				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_DONT_CARE"],
+				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_DONT_CARE"],
+				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_DONT_CARE"]
+				)
 	nTrigConditions = 1
-
 	status["setTriggerChannelConditions"] = ps.ps6000SetTriggerChannelConditions(
 			chandle, byref(triggerConditions), nTrigConditions
 			)
 	assert_pico_ok(status["setTriggerChannelConditions"])
 
-	# hysteresis = c_uint16(int(thresholdADC * 0.015))
-	Properties = ps.PS6000_TRIGGER_CHANNEL_PROPERTIES * 2
-	channelProperties = Properties(
-			ps.PS6000_TRIGGER_CHANNEL_PROPERTIES(
-				thresholdADC,
-				0,	# hysteresis,
-				0,	# (thresholdADC * -1),
-				0,	# hysteresis,
-				ps.PS6000_CHANNEL["PS6000_CHANNEL_A"],
-				ps.PS6000_THRESHOLD_MODE["PS6000_LEVEL"]
-				),
-			ps.PS6000_TRIGGER_CHANNEL_PROPERTIES(
-				thresholdADC,
-				0,	# hysteresis,
-				0,	# (thresholdADC * -1),
-				0,	# hysteresis,
-				ps.PS6000_CHANNEL["PS6000_CHANNEL_B"],
-				ps.PS6000_THRESHOLD_MODE["PS6000_LEVEL"]
+	if runtimeOptions["trigs"] == 2:
+		Properties = ps.PS6000_TRIGGER_CHANNEL_PROPERTIES * 2
+		channelProperties = Properties(
+				ps.PS6000_TRIGGER_CHANNEL_PROPERTIES(
+					thresholdADC,
+					0,
+					0,
+					0,
+					ps.PS6000_CHANNEL["PS6000_CHANNEL_A"],
+					ps.PS6000_THRESHOLD_MODE["PS6000_LEVEL"]
+					),
+				ps.PS6000_TRIGGER_CHANNEL_PROPERTIES(
+					thresholdADC,
+					0,
+					0,
+					0,
+					ps.PS6000_CHANNEL["PS6000_CHANNEL_B"],
+					ps.PS6000_THRESHOLD_MODE["PS6000_LEVEL"]
+					)
 				)
-			)
-	nChannelProperties = 2
+		nChannelProperties = 2
+	else:
+		Properties = ps.PS6000_TRIGGER_CHANNEL_PROPERTIES * 4
+		channelProperties = Properties(
+				ps.PS6000_TRIGGER_CHANNEL_PROPERTIES(
+					thresholdADC,
+					0,
+					0,
+					0,
+					ps.PS6000_CHANNEL["PS6000_CHANNEL_A"],
+					ps.PS6000_THRESHOLD_MODE["PS6000_LEVEL"]
+					),
+				ps.PS6000_TRIGGER_CHANNEL_PROPERTIES(
+					thresholdADC,
+					0,
+					0,
+					0,
+					ps.PS6000_CHANNEL["PS6000_CHANNEL_B"],
+					ps.PS6000_THRESHOLD_MODE["PS6000_LEVEL"]
+					),
+				ps.PS6000_TRIGGER_CHANNEL_PROPERTIES(
+					thresholdADC,
+					0,
+					0,
+					0,
+					ps.PS6000_CHANNEL["PS6000_CHANNEL_C"],
+					ps.PS6000_THRESHOLD_MODE["PS6000_LEVEL"]
+					),
+				ps.PS6000_TRIGGER_CHANNEL_PROPERTIES(
+					thresholdADC,
+					0,
+					0,
+					0,
+					ps.PS6000_CHANNEL["PS6000_CHANNEL_D"],
+					ps.PS6000_THRESHOLD_MODE["PS6000_LEVEL"]
+					)
+				)
+		nChannelProperties = 4
 	status["setTriggerChProperties"] = ps.ps6000SetTriggerChannelProperties(
 			chandle, byref(channelProperties), nChannelProperties, 0, autoTrigms
 			)
@@ -302,15 +331,26 @@ def main():
 	status["setTriggerDelay"] = ps.ps6000SetTriggerDelay(chandle, delaySeconds)
 	assert_pico_ok(status["setTriggerDelay"])
 
-	status["setTriggerChannelDirections"] = ps.ps6000SetTriggerChannelDirections(
-			chandle, 
-			ps.PS6000_THRESHOLD_DIRECTION["PS6000_BELOW"],
-			ps.PS6000_THRESHOLD_DIRECTION["PS6000_BELOW"],
-			ps.PS6000_THRESHOLD_DIRECTION["PS6000_NONE"],
-			ps.PS6000_THRESHOLD_DIRECTION["PS6000_NONE"], 
-			ps.PS6000_THRESHOLD_DIRECTION["PS6000_NONE"],
-			ps.PS6000_THRESHOLD_DIRECTION["PS6000_NONE"]
-			)
+	if runtimeOptions["trigs"] == 2:
+		status["setTriggerChannelDirections"] = ps.ps6000SetTriggerChannelDirections(
+				chandle, 
+				ps.PS6000_THRESHOLD_DIRECTION["PS6000_BELOW"],
+				ps.PS6000_THRESHOLD_DIRECTION["PS6000_BELOW"],
+				ps.PS6000_THRESHOLD_DIRECTION["PS6000_NONE"],
+				ps.PS6000_THRESHOLD_DIRECTION["PS6000_NONE"], 
+				ps.PS6000_THRESHOLD_DIRECTION["PS6000_NONE"],
+				ps.PS6000_THRESHOLD_DIRECTION["PS6000_NONE"]
+				)
+	else:
+		status["setTriggerChannelDirections"] = ps.ps6000SetTriggerChannelDirections(
+				chandle, 
+				ps.PS6000_THRESHOLD_DIRECTION["PS6000_BELOW"],
+				ps.PS6000_THRESHOLD_DIRECTION["PS6000_BELOW"],
+				ps.PS6000_THRESHOLD_DIRECTION["PS6000_BELOW"],
+				ps.PS6000_THRESHOLD_DIRECTION["PS6000_BELOW"],
+				ps.PS6000_THRESHOLD_DIRECTION["PS6000_NONE"],
+				ps.PS6000_THRESHOLD_DIRECTION["PS6000_NONE"]
+				)
 	assert_pico_ok(status["setTriggerChannelDirections"])
 	
 	""" Get timebase info & number of pre/post trigger samples to be collected
@@ -336,9 +376,9 @@ def main():
 	""" Maximum ADC count value """
 	maxADC = c_int16(32512)
 
-	""" Creating data output file """	
-	with open(f"./Data/mntm_data_{timestamp}.{runtimeOptions['dformat']}", "a") as out:
-		out.write("cap\tdeltaT (ns)\n")
+	""" Execution time benchmarking (see below) """
+	benchmark = [0.0]
+	benchmark[0] = get_time()
 
 	for icap in range(runtimeOptions["captures"]):
 		""" Logging capture """
@@ -368,7 +408,7 @@ def main():
 
 		""" Create buffers ready for assigning pointers for data collection.
 		'bufferXMin' are generally used for downsampling but in our case they're equal
-		bufferXMax as we don't need to downsample.
+		to bufferXMax as we don't need to downsample.
 		"""
 		bufferAMax = (c_int16 * maxSamples)()
 		bufferAMin = (c_int16 * maxSamples)()
@@ -392,7 +432,7 @@ def main():
 		assert_pico_ok(status["setDataBuffersA"])
 
 		status["setDataBuffersB"] = ps.ps6000SetDataBuffers(
-				chandle, 0, byref(bufferBMax), byref(bufferBMin), maxSamples, 0
+				chandle, 1, byref(bufferBMax), byref(bufferBMin), maxSamples, 0
 				)
 		assert_pico_ok(status["setDataBuffersB"])
 
@@ -402,7 +442,7 @@ def main():
 		assert_pico_ok(status["setDataBuffersC"])		
 
 		status["setDataBuffersD"] = ps.ps6000SetDataBuffers(
-				chandle, 0, byref(bufferDMax), byref(bufferDMin), maxSamples, 0
+				chandle, 3, byref(bufferDMax), byref(bufferDMin), maxSamples, 0
 				)
 		assert_pico_ok(status["setDataBuffersD"])
 
@@ -416,7 +456,7 @@ def main():
 		status["getValues"] = ps.ps6000GetValues(
 				chandle, 0, byref(cmaxSamples), 1, 0, 0, byref(overflow)
 				)
-		assert_pico_ok(status["getValues"])		
+		assert_pico_ok(status["getValues"])
 
 		""" Convert ADC counts data to mV """
 		bufferChAmV = adc2mV(bufferAMax, chRange, maxADC)
@@ -471,15 +511,19 @@ def main():
 				f"gate D off: {gate['chD']['closed']['mV']:.2f}mV, {gate['chD']['closed']['ns']:.2f}ns @ {gate['chD']['closed']['index']}")
 
 		delayBounds = (
-				(gate["chB"]["open"]["ns"] - gate["chA"]["open"]["ns"]) / 2,
-				(gate["chD"]["open"]["ns"] - gate["chC"]["open"]["ns"]) / 2
+				gate["chA"]["open"]["ns"] + (gate["chB"]["open"]["ns"] - gate["chA"]["open"]["ns"]) / 2,
+				gate["chC"]["open"]["ns"] + (gate["chD"]["open"]["ns"] - gate["chC"]["open"]["ns"]) / 2
 				)
 		deltaT = delayBounds[1] - delayBounds[0]
-		""" Print data to file """
-		with open(f"./Data/mntm_data_{timestamp}.txt", "a") as out:
-			out.write(f"{icap + 1}\t{deltaT:.9f}\n")
-
+		
+		""" Print data to file & plot if requested """
+		with open(datahandle, "a") as out:
+			out.write(f"{icap + 1}\t\t{deltaT:.9f}\n")
 		if runtimeOptions["plot"]:
+			""" Create time data """
+			time = np.linspace(
+					0, (cmaxSamples.value - 1) * timeIntervalns.value, cmaxSamples.value, dtype="float32"
+					)
 			plot_data(
 					bufferChAmV, bufferChBmV, bufferChCmV, bufferChDmV, gate, delayBounds,
 					time, deltaT, timeIntervalns.value, f"{timestamp}_{str(icap)}"
@@ -493,13 +537,30 @@ def main():
 				colWidth = max([len(k) for k in status.keys()])
 				for key, value in status.items():
 					log(loghandle, f"{key: <{colWidth}} {value:}")
+			""" Stop acquisition """
+			status["stop"] = ps.ps6000Stop(chandle)
+			assert_pico_ok(status["stop"])
 			sys.exit(1)
 
+		benchmark.append(get_time())
+
+	""" Stop acquisition """
 	status["stop"] = ps.ps6000Stop(chandle)
 	assert_pico_ok(status["stop"])
 
 	""" Close unit & disconnect the scope """
 	ps.ps6000CloseUnit(chandle)
+
+	""" Histogram """
+	make_histogram(datahandle)
+
+	""" Execution time benchmarking """
+	avgTime = 0.0
+	for i in range(len(benchmark) - 1):
+		avgTime += (benchmark[i + 1] - benchmark[i])
+	print(f"Total execution time: {avgTime * 1000:.6f} ms")
+	avgTime /= (len(benchmark) - 1)
+	print(f"Average time per capture: {avgTime * 1000:.6f} ms")
 
 	""" Logging exit status & data location """
 	if runtimeOptions["log"]:
