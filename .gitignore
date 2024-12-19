@@ -5,7 +5,7 @@
 /pycoviewlib/__pycache__
 
 # Misc
-/constants.py
+/pycoviewlib/constants.py
 
 # Compiled source
 *.com
@@ -26,6 +26,7 @@
 *.zip
 
 # OS generated files
+.*.py.swp
 .DS_Store
 .DS_Store?
 ._*
