@@ -15,23 +15,18 @@ def print_status(status: dict) -> None:
 """ Parse input arguments """
 def parse_args(args: list) -> dict:
 	options = dict.fromkeys([
-		"captures", "plot", "log", "dformat"
+		"captures", "plot", "log", "dformat", "trigs"
 		])
-	if len(args) == 1:
-		options["captures"] = 1
-		options["plot"] = False
-		options["log"] = False
-		options["dformat"] = "txt"
-	else:
-		for arg in args:
-			if arg.isdigit():
-				options["captures"] = int(arg)
-				break
-			else:
-				options["captures"] = 1
-		options["plot"] = True if "plot" in args else False
-		options["log"] = True if "log" in args else False
-		options["dformat"] = "csv" if "csv" in args else "txt"
+	for arg in args:
+		if arg.isdigit():
+			options["captures"] = int(arg)
+			break
+		else:
+			options["captures"] = 1
+	options["plot"] = True if "plot" in args else False
+	options["log"] = True if "log" in args else False
+	options["dformat"] = "csv" if "csv" in args else "txt"
+	options["trigs"] = 4 if "4way" in args else 2
 	
 	return options
 
@@ -43,8 +38,7 @@ def detect_gate_open_closed(
 		timeIntervalns: float
 		) -> dict[str, float | int]:
 	"""
-	minValueIndex = array index of the buffer's negative peak
-		(most negative value).
+	minValueIndex = array index of buffer's most negative value.
 	Threshold hits are returned as (voltage, time) coordinates.
 	"""
 	gateChX = {
