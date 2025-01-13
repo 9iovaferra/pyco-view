@@ -15,7 +15,7 @@ def print_status(status: dict) -> None:
 """ Parse input arguments """
 def parse_args(args: list) -> dict:
 	options = dict.fromkeys([
-		"captures", "plot", "log", "dformat", "trigs"
+		"captures", "plot", "log", "dformat", "trigs", "livehist"
 		])
 	for arg in args:
 		if arg.isdigit():
@@ -27,6 +27,7 @@ def parse_args(args: list) -> dict:
 	options["log"] = True if "log" in args else False
 	options["dformat"] = "csv" if "csv" in args else "txt"
 	options["trigs"] = 4 if "4way" in args else 2
+	options["livehist"] = True if "live" in args else False
 	
 	return options
 
