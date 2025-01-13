@@ -10,6 +10,12 @@ from time import time as get_time	# benchmarking
 import sys
 from pathlib import Path
 
+# Delay error simulation
+from fitter import Fitter, get_common_distributions, get_distributions
+from statistics import fmean
+import random
+import seaborn as sns
+
 def plot_data(
 		bufferChAmV: Array[c_int16],
 		bufferChBmV: Array[c_int16],
@@ -126,16 +132,37 @@ def plot_data(
 	plt.legend(loc="lower right")
 	plt.savefig(f"./Data/mntm_plot_{filestamp}.png")
 
-def make_histogram(datahandle: str) -> None:
+
+
+def delay_sim(datahandle: str) -> tuple[float, float]:
+	oldData = "/home/pi/Documents/pyco-view/delay-sim/mean-timer.txt"	
+	with open(oldData, "r") as f:
+		data = [float(value) for value in f.readlines()]
+	fit = Fitter(data, distributions=['norm'])
+	fit.fit()
+	sigma = fit.fitted_param['norm'][1]
 	with open(datahandle, "r") as f:
 		data = [float(line.split()[1]) for line in f.readlines()[1:]]
+	mu = fmean(data)
+	
+	""" normalvariate is thread-safe unlike gauss.
+	Subtracting mu to get delay only (approximately) """
+	dataSim = [v + (random.normalvariate(mu=mu, sigma=sigma) - mu) for v in data]
+	
+	return dataSim
+
+def make_histogram(data: list) -> None:
+	# with open(datahandle, "r") as f:
+	#	data = [float(line.split()[1]) for line in f.readlines()[1:]]
 	xrange = (int(min(data)) - 1, int(max(data)) + 1)
 	counts, bins = np.histogram(data, range=xrange)
-	plt.hist(bins[:-1], bins, weights=counts)
-	plt.xlim(xrange)
-	plt.ylim(0, max(counts))
-	plt.xlabel("Delay (ns)")
-	plt.ylabel("Counts")
+	# plt.hist(bins[:-1], bins, weights=counts)
+	# plt.xlim(xrange)
+	# plt.ylim(0, max(counts))
+	# plt.xlabel("Delay (ns)")
+	# plt.ylabel("Counts")
+	sns.set_style("ticks")
+	sns.histplot(data, bins=100)
 	plt.show()
 
 def log(loghandle: str, entry: str, time=False) -> None:
@@ -552,7 +579,8 @@ def main():
 	ps.ps6000CloseUnit(chandle)
 
 	""" Histogram """
-	make_histogram(datahandle)
+	dataSim = delay_sim(datahandle)
+	make_histogram(dataSim)
 
 	""" Execution time benchmarking """
 	avgTime = 0.0
