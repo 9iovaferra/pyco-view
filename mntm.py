@@ -4,6 +4,7 @@ import numpy as np
 from picosdk.ps6000 import ps6000 as ps
 from pycoviewlib.functions import *
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 from picosdk.functions import adc2mV, assert_pico_ok
 from datetime import datetime
 from time import time as get_time	# benchmarking
@@ -134,7 +135,7 @@ def plot_data(
 
 
 
-def delay_sim(datahandle: str) -> tuple[float, float]:
+def delay_sim_from_file(datahandle: str) -> list:
 	oldData = "/home/pi/Documents/pyco-view/delay-sim/mean-timer.txt"	
 	with open(oldData, "r") as f:
 		data = [float(value) for value in f.readlines()]
@@ -151,18 +152,21 @@ def delay_sim(datahandle: str) -> tuple[float, float]:
 	
 	return dataSim
 
+def delay_sim_interactive(value: float, mu: float, sigma: float) -> float:
+	newValue = value + (random.normalvariate(mu=mu, sigma=sigma) - mu)
+
+	return newValue
+
 def make_histogram(data: list) -> None:
 	# with open(datahandle, "r") as f:
 	#	data = [float(line.split()[1]) for line in f.readlines()[1:]]
-	xrange = (int(min(data)) - 1, int(max(data)) + 1)
-	counts, bins = np.histogram(data, range=xrange)
-	# plt.hist(bins[:-1], bins, weights=counts)
-	# plt.xlim(xrange)
-	# plt.ylim(0, max(counts))
-	# plt.xlabel("Delay (ns)")
-	# plt.ylabel("Counts")
-	sns.set_style("ticks")
-	sns.histplot(data, bins=100)
+	# xrange = (int(min(data)) - 0.5, int(max(data)) + 0.5)
+	counts, bins = np.histogram(data, bins="fd")
+	plt.hist(bins[:-1], bins, weights=counts, color="lightcoral")
+	plt.xlim(0,80)
+	plt.ylim(0, max(counts) + 0.2 * max(counts))
+	plt.xlabel("Delay (ns)")
+	plt.ylabel("Counts")
 	plt.show()
 
 def log(loghandle: str, entry: str, time=False) -> None:
@@ -407,6 +411,11 @@ def main():
 	benchmark = [0.0]
 	benchmark[0] = get_time()
 
+	""" Matplotlib interactive mode on """
+	if runtimeOptions["livehist"]:
+		plt.ion()
+		data = []
+
 	for icap in range(runtimeOptions["captures"]):
 		""" Logging capture """
 		if runtimeOptions["log"]:
@@ -556,6 +565,37 @@ def main():
 					time, deltaT, timeIntervalns.value, f"{timestamp}_{str(icap)}"
 					)
 
+		benchmark.append(get_time())
+
+		""" Updating live histogram """
+		if runtimeOptions["livehist"]:
+			data.append(delay_sim_interactive(value=deltaT, mu=15.808209, sigma=2.953978))
+			# counts, bins = np.histogram(data, bins="fd")
+			counts, bins = np.histogram(data, range=(0,80), bins=80)
+			
+			if icap == 0:
+				fig, ax = plt.subplots(figsize=(10,6))
+				livecounts, livebins, livebars = ax.hist(
+					bins[:-1], bins, weights=counts, color="lightcoral"
+					) # rwidth=0.95
+				ax.set_xlim(0, 80)
+				ax.set_ylim(0, runtimeOptions["captures"] * 0.6) # should update this if needed
+				ax.set_xlabel("Delay (ns)")
+				ax.set_ylabel("Counts")
+			
+			if icap != runtimeOptions["captures"] - 2:
+				_ = [b.remove() for b in livebars]
+				livecounts, livebins, livebars = ax.hist(
+					bins[:-1], bins, weights=counts, color="lightcoral"
+					) # rwidth=0.95
+				# ax.set_ylim(0, max(counts) + 0.2 * max(counts))
+				# ax.set_xlabel("Delay (ns)")
+				# ax.set_ylabel("Counts")
+				plt.pause(0.01)
+			else:
+				plt.ioff()
+				plt.show()
+
 		""" Checking if everything is fine """
 		if not 0 in status.values():
 			""" Logging error(s) """
@@ -569,18 +609,12 @@ def main():
 			assert_pico_ok(status["stop"])
 			sys.exit(1)
 
-		benchmark.append(get_time())
-
 	""" Stop acquisition """
 	status["stop"] = ps.ps6000Stop(chandle)
 	assert_pico_ok(status["stop"])
 
 	""" Close unit & disconnect the scope """
 	ps.ps6000CloseUnit(chandle)
-
-	""" Histogram """
-	dataSim = delay_sim(datahandle)
-	make_histogram(dataSim)
 
 	""" Execution time benchmarking """
 	avgTime = 0.0
@@ -589,6 +623,12 @@ def main():
 	print(f"Total execution time: {avgTime * 1000:.6f} ms")
 	avgTime /= (len(benchmark) - 1)
 	print(f"Average time per capture: {avgTime * 1000:.6f} ms")
+	print(f"Event resolution: {1/avgTime:.1f} Hz")
+
+	""" Post-acquisition histogram """
+	if not runtimeOptions["livehist"]:
+		dataSim = delay_sim_from_file(datahandle)
+		make_histogram(dataSim)
 
 	""" Logging exit status & data location """
 	if runtimeOptions["log"]:
