@@ -4,6 +4,9 @@
 # __pycache__ folder
 /pycoviewlib/__pycache__
 
+# delay-sim folder
+/delay-sim
+
 # Misc
 /pycoviewlib/constants.py
 
