@@ -5,44 +5,51 @@ from picosdk.ps6000 import ps6000 as ps
 from pycoviewlib.functions import *
 import matplotlib.pyplot as plt
 from picosdk.functions import adc2mV, assert_pico_ok
-from datetime import datetime
+from datetime import datetime as dt
 import sys
 from pathlib import Path
 
-def detect_gate_open_closed(
-		buffer: Array[c_int16],
-		time: np.ndarray[np.float32],
-		threshold: float,
-		maxSamples: int,
-		timeIntervalns: float
-		) -> dict[str, float | int]:
-	"""
-	minValueIndex = array index of the buffer's negative peak
-		(most negative value).
-	Threshold hits are returned as (voltage, time) coordinates.
-	"""
-	gateChX = {
-		"open": {"mV": threshold, "ns": 0.0, "index": 0},
-		"closed": {"mV": threshold, "ns": 0.0, "index": 0}
-		}
-	hit = 0
-	minValueIndex = buffer.index(min(buffer))
-	minDifference = min(buffer) - threshold
-	for i in range(minValueIndex):
-		if abs(buffer[i] - threshold) < abs(minDifference):
-			hit = i
-			minDifference = buffer[i] - threshold
-	gateChX["open"]["ns"] = time[hit]
-	gateChX["open"]["index"] = hit
-	minDifference = min(buffer) - threshold
-	for i in range(minValueIndex, maxSamples):
-		if abs(buffer[i] - threshold) < abs(minDifference):
-			hit = i
-			minDifference = buffer[i] - threshold
-	gateChX["closed"]["ns"] = time[hit]
-	gateChX["closed"]["index"] = hit
-	
-	return gateChX
+# Benchmarking
+from time import time as get_time
+
+# Delay error simulation
+from fitter import Fitter, get_common_distributions, get_distributions
+from statistics import fmean
+
+# def detect_gate_open_closed(
+#		buffer: Array[c_int16],
+#		time: np.ndarray[np.float32],
+#		threshold: float,
+#		maxSamples: int,
+#		timeIntervalns: float
+#		) -> dict[str, float | int]:
+#	"""
+#	minValueIndex = array index of the buffer's negative peak
+#		(most negative value).
+#	Threshold hits are returned as (voltage, time) coordinates.
+#	"""
+#	gateChX = {
+#		"open": {"mV": threshold, "ns": 0.0, "index": 0},
+#		"closed": {"mV": threshold, "ns": 0.0, "index": 0}
+#		}
+#	hit = 0
+#	minValueIndex = buffer.index(min(buffer))
+#	minDifference = min(buffer) - threshold
+#	for i in range(minValueIndex):
+#		if abs(buffer[i] - threshold) < abs(minDifference):
+#			hit = i
+#			minDifference = buffer[i] - threshold
+#	gateChX["open"]["ns"] = time[hit]
+#	gateChX["open"]["index"] = hit
+#	minDifference = min(buffer) - threshold
+#	for i in range(minValueIndex, maxSamples):
+#		if abs(buffer[i] - threshold) < abs(minDifference):
+#			hit = i
+#			minDifference = buffer[i] - threshold
+#	gateChX["closed"]["ns"] = time[hit]
+#	gateChX["closed"]["index"] = hit
+#	
+#	return gateChX
 
 def plot_data(
 		bufferChAmV: Array[c_int16],
@@ -121,18 +128,68 @@ def plot_data(
 	plt.legend(loc="lower right")
 	plt.savefig(f"./Data/tdc_plot_{filestamp}.png")
 
+def delay_sim_from_file(datahandle: str) -> list:
+	oldData = "/home/pi/Documents/pyco-view/delay-sim/mean-timer.txt"	
+	with open(oldData, "r") as f:
+		data = [float(value) for value in f.readlines()]
+	fit = Fitter(data, distributions=['norm'])
+	fit.fit()
+	sigma = fit.fitted_param['norm'][1]
+	with open(datahandle, "r") as f:
+		data = [float(line.split()[1]) for line in f.readlines()[1:]]
+	mu = fmean(data)
+	
+	""" normalvariate is thread-safe unlike gauss.
+	Subtracting mu to get delay only (approximately) """
+	dataSim = [v + (np.random.normal(mu, sigma) - mu) for v in data]
+	
+	return dataSim
+
+def delay_sim_interactive(value: float, mu: float, sigma: float) -> float:
+	newValue = value + (np.random.normal(mu, sigma) - mu)
+
+	return newValue
+
+def make_histogram(data: list) -> None:
+	# with open(datahandle, "r") as f:
+	#	data = [float(line.split()[1]) for line in f.readlines()[1:]]
+	# xrange = (int(min(data)) - 0.5, int(max(data)) + 0.5)
+	counts, bins = np.histogram(data, bins="fd")
+	plt.hist(bins[:-1], bins, weights=counts, color="black")
+	plt.xlim(0,80)
+	plt.ylim(0, max(counts) + 0.2 * max(counts))
+	plt.xlabel("Delay (ns)")
+	plt.ylabel("Counts")
+	plt.show()
+
 def log(loghandle: str, entry: str, time=False) -> None:
 	with open(f"./Data/{loghandle}", "a") as logfile:
 		if time:
-			logfile.write(f"[{datetime.now().strftime('%H:%M:%S')}] {entry}\n")
+			logfile.write(f"[{dt.now().strftime('%H:%M:%S')}] {entry}\n")
 		else:
 			logfile.write(f"           {entry}\n")
 
+class Benchmark:
+	def __init__(self):
+		self.stopwatch = [get_time()]
+		self.convert = {"ms": 1000, "µs": 1000000}
+	
+	def split(self):
+		self.stopwatch.append(get_time())
+
+	def results(self, unit="ms"):
+		avg = .0
+		for i in range(len(self.stopwatch) - 1):
+			avg += (self.stopwatch[i + 1] - self.stopwatch[i])
+		print(f"Total execution time: {dt.strftime(dt.utcfromtimestamp(avg), '%T.%f')[:-3]}")
+		avg /= (len(self.stopwatch) - 1)
+		print(f"Average time per capture: {avg * self.convert[unit]:.1f} {unit}")
+		print(f"Event resolution: {1/avg:.1f} Hz")
 
 def main():
 	runtimeOptions: dict = parse_args(sys.argv)
 
-	timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+	timestamp = dt.now().strftime("%Y-%m-%d_%H-%M-%S")
 	
 	""" Creating loghandle if required """
 	if runtimeOptions["log"]:
@@ -150,6 +207,11 @@ def main():
 	   			time=True)
 		sys.exit(1)
 	
+	""" Creating data output file """
+	datahandle = f"./Data/tdc_data_{timestamp}.{runtimeOptions['dformat']}"
+	with open(datahandle, "a") as out:
+		out.write("cap\t\tdeltaT (ns)\n")
+
 	""" Creating chandle and status. Setting acquisition parameters.
 	Opening ps6000 connection: returns handle for future use in API functions
 	"""
@@ -297,9 +359,13 @@ def main():
 	""" Maximum ADC count value """
 	maxADC = c_int16(32512)
 
-	""" Creating data output file """	
-	with open(f"./Data/tdc_data_{timestamp}.{runtimeOptions['dformat']}", "a") as out:
-		out.write("cap\tdeltaT (ns)\n")
+	""" Matplotlib interactive mode on """
+	if runtimeOptions["livehist"]:
+		plt.ion()
+		data = []
+
+	""" Benchmarking """
+	benchmark = Benchmark()
 
 	for icap in range(runtimeOptions["captures"]):
 		""" Logging capture """
@@ -406,6 +472,37 @@ def main():
 					f"{timestamp}_{str(icap)}"
 					)
 
+		""" Updating live histogram """
+		if runtimeOptions["livehist"]:
+			data.append(delay_sim_interactive(value=deltaT, mu=15.808209, sigma=2.953978))
+			# counts, bins = np.histogram(data, bins="fd")
+			counts, bins = np.histogram(data, range=(0,80), bins=80)
+			
+			if icap == 0:
+				fig, ax = plt.subplots(figsize=(10,6))
+				livecounts, livebins, livebars = ax.hist(
+					bins[:-1], bins, weights=counts, color="lightcoral"
+					) # rwidth=0.95
+				ax.set_xlim(0, 80)
+				ax.set_ylim(0, runtimeOptions["captures"] * 0.6) # should update this if needed
+				ax.set_xlabel("Delay (ns)")
+				ax.set_ylabel("Counts")
+			
+			if icap != runtimeOptions["captures"] - 2:
+				_ = [b.remove() for b in livebars]
+				livecounts, livebins, livebars = ax.hist(
+					bins[:-1], bins, weights=counts, color="lightcoral"
+					) # rwidth=0.95
+				# ax.set_ylim(0, max(counts) + 0.2 * max(counts))
+				# ax.set_xlabel("Delay (ns)")
+				# ax.set_ylabel("Counts")
+				plt.pause(0.01)
+			else:
+				plt.ioff()
+				plt.show()
+
+		benchmark.split()
+
 		""" Checking if everything is fine """
 		if not 0 in status.values():
 			""" Logging error(s) """
@@ -416,11 +513,20 @@ def main():
 					log(loghandle, f"{key: <{colWidth}} {value:}")
 			sys.exit(1)
 
+	""" Stop acquisition """
 	status["stop"] = ps.ps6000Stop(chandle)
 	assert_pico_ok(status["stop"])
 
 	""" Close unit & disconnect the scope """
 	ps.ps6000CloseUnit(chandle)
+
+	""" Post-acquisition histogram """
+	if not runtimeOptions["livehist"]:
+		dataSim = delay_sim_from_file(datahandle)
+		make_histogram(dataSim)
+
+	""" Benchmark results """
+	benchmark.results()
 
 	""" Logging exit status & data location """
 	if runtimeOptions["log"]:
