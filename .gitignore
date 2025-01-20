@@ -8,7 +8,8 @@
 /delay-sim
 
 # Misc
-/pycoviewlib/constants.py
+thread.py
+tk-test.py
 
 # Compiled source
 *.com
