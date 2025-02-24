@@ -3,13 +3,13 @@
 
 # __pycache__ folder
 /pycoviewlib/__pycache__
+/pycoviewlib/tkSliderWidget/__pycache__
 
 # delay-sim folder
 /delay-sim
 
 # Misc
 thread.py
-tk-test.py
 
 # Compiled source
 *.com

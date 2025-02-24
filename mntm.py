@@ -4,18 +4,17 @@ import numpy as np
 from picosdk.ps6000 import ps6000 as ps
 from pycoviewlib.functions import *
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
 from picosdk.functions import adc2mV, assert_pico_ok
 from datetime import datetime
-from time import time as get_time	# benchmarking
 import sys
 from pathlib import Path
+
+# Benchmarking
+from time import time as get_time
 
 # Delay error simulation
 from fitter import Fitter, get_common_distributions, get_distributions
 from statistics import fmean
-import random
-import seaborn as sns
 
 def plot_data(
 		bufferChAmV: Array[c_int16],
@@ -148,12 +147,12 @@ def delay_sim_from_file(datahandle: str) -> list:
 	
 	""" normalvariate is thread-safe unlike gauss.
 	Subtracting mu to get delay only (approximately) """
-	dataSim = [v + (random.normalvariate(mu=mu, sigma=sigma) - mu) for v in data]
+	dataSim = [v + (np.random.normal(mu, sigma) - mu) for v in data]
 	
 	return dataSim
 
 def delay_sim_interactive(value: float, mu: float, sigma: float) -> float:
-	newValue = value + (random.normalvariate(mu=mu, sigma=sigma) - mu)
+	newValue = value + (np.random.normal(mu, sigma) - mu)
 
 	return newValue
 
@@ -616,6 +615,11 @@ def main():
 	""" Close unit & disconnect the scope """
 	ps.ps6000CloseUnit(chandle)
 
+	""" Post-acquisition histogram """
+	if not runtimeOptions["livehist"]:
+		dataSim = delay_sim_from_file(datahandle)
+		make_histogram(dataSim)
+	
 	""" Execution time benchmarking """
 	avgTime = 0.0
 	for i in range(len(benchmark) - 1):
@@ -624,11 +628,6 @@ def main():
 	avgTime /= (len(benchmark) - 1)
 	print(f"Average time per capture: {avgTime * 1000:.6f} ms")
 	print(f"Event resolution: {1/avgTime:.1f} Hz")
-
-	""" Post-acquisition histogram """
-	if not runtimeOptions["livehist"]:
-		dataSim = delay_sim_from_file(datahandle)
-		make_histogram(dataSim)
 
 	""" Logging exit status & data location """
 	if runtimeOptions["log"]:
