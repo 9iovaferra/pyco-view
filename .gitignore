@@ -10,6 +10,7 @@
 
 # Misc
 thread.py
+config.ini.bak
 
 # Compiled source
 *.com
