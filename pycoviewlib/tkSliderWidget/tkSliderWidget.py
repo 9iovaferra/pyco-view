@@ -16,7 +16,7 @@ class Slider(Frame):
     BAR_COLOR_OUTTER = "#c2d6d6"
     BAR_RADIUS = 10
     BAR_RADIUS_INNER = BAR_RADIUS - 5
-    DIGIT_PRECISION = ".1f"  # for showing in the canvas
+    DIGIT_PRECISION = ".0f"  # for showing in the canvas
 
     # relative step size in 0 to 1, set to 0 for no step size restiction
     # may be override by the step_size argument in __init__
