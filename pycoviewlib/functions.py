@@ -12,6 +12,34 @@ def print_status(status: dict) -> None:
 	else:
 		print("No status to show.")
 
+def _isfloat(value: str) -> bool:
+	try:
+		float(value)
+		return True
+	except ValueError:
+		return False
+
+""" Reading runtime parameters from .ini file """
+def parse_config() -> dict:
+	params = {}
+	with open("config.ini", "r") as ini:
+		for line in ini:
+			if "[" in line or line == "\n":
+				continue
+			p = line.rstrip("\n").split(" = ")
+			if p[1].isdigit():
+				params[p[0]] = int(p[1])
+			elif _isfloat(p[1]):
+				params[p[0]] = float(p[1])
+			elif p[1].isalpha():
+				params[p[0]] = p[1]
+			else:
+				params[p[0]] = list(int(v) for v in p[1].split(","))
+
+	params["maxSamples"] = params["preTrigSamples"] + params["postTrigSamples"]
+
+	return params
+
 """ Parse input arguments """
 def parse_args(args: list) -> dict:
 	options = dict.fromkeys([
