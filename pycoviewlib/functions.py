@@ -1,4 +1,5 @@
 """ Copyright (C) 2019 Pico Technology Ltd. """
+from pycoviewlib.constants import maxADC
 from ctypes import c_int16, Array
 import numpy as np
 
@@ -18,6 +19,11 @@ def _isfloat(value: str) -> bool:
 		return True
 	except ValueError:
 		return False
+
+def mV2adc(thresh: float, offset: float, range_: int) -> int:
+	thresholdADC = int((thresh + offset * 1000) / range_ * maxADC)
+	
+	return thresholdADC
 
 """ Reading runtime parameters from .ini file """
 def parse_config() -> dict:
