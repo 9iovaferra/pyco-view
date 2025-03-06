@@ -1,3 +1,4 @@
+""" Copyright (C) 2019 Pico Technology Ltd. """
 """ tkSliderWidget Copyright (c) 2020, Mengxun Li """
 from tkinter import *
 from tkinter import ttk
@@ -7,6 +8,14 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
 from pycoviewlib.tkSliderWidget.tkSliderWidget import Slider
 from typing import Union
+import subprocess
+from os import path
+
+python = path.expanduser("~/.venv/bin/python3")
+# exitCode = subprocess.call([python, "tdc.py", "150", "log"])
+
+# if exitCode != 0:
+# 	print("/!\\")
 
 def placeholder():
 	print("This command definitely does something (trust me).")
@@ -30,7 +39,7 @@ class ChannelSettings():
 				text="Enabled",
 				onvalue=1,
 				offvalue=0,
-				command=lambda : update_setting(f"ch{ch_id}enabled", self.enabledFlag.get())
+				command=lambda : update_setting([f"ch{ch_id}enabled"], [settings[f"ch{ch_id}enabled"].get()])
 				)
 		self.enabled.grid(column=0, row=0, pady=(THIN_PAD,0), sticky=W+N)
 
@@ -93,7 +102,9 @@ def apply_changes(settings: dict) -> None:
 	keys = []
 	values = []
 	for k, v in settings.items():
-		if "range" in k:
+		if "mode" in k:
+			new_value = modes[v.get()]
+		elif "range" in k:
 			new_value = chInputRanges.index(v.get())
 		elif "coupling" in k:
 			new_value = couplings[v.get()]
@@ -109,8 +120,8 @@ def apply_changes(settings: dict) -> None:
 	update_setting(keys, values)
 
 def update_setting(
-		key: str | list[str],
-		new_value: Union[str, int, float] | list[Union[str, int, float]]
+		key: list[str],
+		new_value: list[Union[str, int, float]]
 		) -> None:
 	ini = open("config.ini", "r")
 	lines = ini.readlines()
@@ -149,16 +160,13 @@ class Histogram():
 		self.canvas.draw()
 		self.canvas.get_tk_widget().grid(column=0, row=0, padx=THIN_PAD, pady=THIN_PAD, sticky=W+E+N+S)
 
-# def mv2adc(thresholdmV: int) -> None:
-# 	settings["thresholdADC"] = int(
-# 			(thresholdmV + params[f"ch{params['target']}analogOffset"] * 1000) \
-# 			/ chInputRanges[params[f"ch{params['target']}range"]] * maxADC
-# 			)
-# 	print(settings["thresholdADC"])
-
 def key_from_value(dictionary: dict, value: int) -> list[str]:
 	return [k for k, v in dictionary.items() if v == value]
 
+def run(script: str) -> None:
+	print(f"Running {script}.py...")
+	exitCode = subprocess.call([python, f"{script}.py"])
+	print(f"Script finished with exit code {exitCode}.\n")
 
 """ Reading runtime parameters from .ini file """
 params = parse_config()
@@ -198,11 +206,18 @@ topFrame.grid(column=0, row=0, padx=WIDE_PAD, pady=(WIDE_PAD,0), sticky=N+W+E)
 topFrame.columnconfigure(3, weight=3)
 
 ttk.Label(topFrame, text="Mode:").grid(column=0, row=0, sticky=W)
-modeVar = StringVar(topFrame, params["mode"])
-modeSelector = ttk.Combobox(topFrame, state="readonly", width=10, values=modes, textvariable=modeVar)
+modeVar = StringVar(value=key_from_value(modes, params["mode"])[0])
+modeSelector = ttk.Combobox(
+		topFrame,
+		state="readonly",
+		values=list(modes.keys()),
+		textvariable=modeVar,
+		width=10
+		)
 modeSelector.grid(column=1, row=0, padx=WIDE_PAD, sticky=W)
 
-ttk.Button(topFrame, text="Update", command=lambda : update_setting(key="mode", new_value=modeVar.get())).grid(column=2, row=0, sticky=W)
+# Find more elegant way to do this
+ttk.Button(topFrame, text="Update", command=lambda : update_setting(["mode"], [modes[modeVar.get()]])).grid(column=2, row=0, sticky=W)
 
 ttk.Label(topFrame, text="v1.00", anchor=E).grid(column=3, row=0, sticky=E)
 
@@ -282,14 +297,14 @@ ttk.Label(summary, text=f"{params['postTrigSamples']}", anchor=E).grid(
 
 h_separator(summary, row=11, columnspan=5)
 
-logFlag = IntVar(value=params["log"]) # read from config file
+logFlag = IntVar(value=params["log"])
 logCheckBox = Checkbutton(
 		summary, variable=logFlag, text="Log acquisition",
-		onvalue=1, offvalue=0, command=lambda : update_setting(key="log", new_value=logFlag.get())
+		onvalue=1, offvalue=0, command=lambda : update_setting(["log"], [logFlag.get()])
 		)
 logCheckBox.grid(column=0, row=12, columnspan=4, pady=(WIDE_PAD,0), sticky=W+S)
 
-startButton = ttk.Button(runTab, text="START", command=placeholder)
+startButton = ttk.Button(runTab, text="START", command=lambda : run(modes[modeVar.get()]))
 startButton.grid(column=0, row=1, padx=(WIDE_PAD,0), pady=0, ipadx=THIN_PAD, ipady=THIN_PAD, sticky=W+S)
 stopButton = ttk.Button(runTab, text="STOP", command=placeholder)
 stopButton.grid(column=1, row=1, padx=(WIDE_PAD,0), pady=0, ipadx=THIN_PAD, ipady=THIN_PAD, sticky=E+S)
@@ -365,7 +380,13 @@ postTrigSpbx.grid(column=0, row=5, padx=lbf_contents_padding["padx"], sticky=W+N
 
 ttk.Label(triggerSettings, text="Timebase").grid(column=0, row=6, **lbf_contents_padding, sticky=W+N) 
 settings["timebase"] = IntVar(value=params["timebase"])
-timebaseCbx = ttk.Combobox(triggerSettings, state="readonly", values=[0, 1, 2, 3, 4], textvariable=settings["timebase"], width=7)
+timebaseCbx = ttk.Combobox(
+		triggerSettings,
+		state="readonly",
+		values=[0, 1, 2, 3, 4],
+		textvariable=settings["timebase"],
+		width=7
+		)
 timebaseCbx.grid(column=0, row=7, padx=lbf_contents_padding["padx"], sticky=W+N)
 
 ttk.Label(triggerSettings, text="Threshold (mV)").grid(column=0, row=8, **lbf_contents_padding, sticky=W+N) 
