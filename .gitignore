@@ -1,9 +1,8 @@
 # Data folder
 /Data
 
-# __pycache__ folder
-/pycoviewlib/__pycache__
-/pycoviewlib/tkSliderWidget/__pycache__
+# __pycache__ folders
+**/__pycache__
 
 # delay-sim folder
 /delay-sim
@@ -39,3 +38,7 @@ config.ini.bak
 .Trashes
 ehthumbs.db
 Thumbs.db
+**/*.obj
+**/*.lib
+**/*.exp
+**/*.h
