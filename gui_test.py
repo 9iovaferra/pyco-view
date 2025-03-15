@@ -12,10 +12,6 @@ import subprocess
 from os import path
 
 python = path.expanduser("~/.venv/bin/python3")
-# exitCode = subprocess.call([python, "tdc.py", "150", "log"])
-
-# if exitCode != 0:
-# 	print("/!\\")
 
 def placeholder():
 	print("This command definitely does something (trust me).")
@@ -163,10 +159,53 @@ class Histogram():
 def key_from_value(dictionary: dict, value: int) -> list[str]:
 	return [k for k, v in dictionary.items() if v == value]
 
-def run(script: str) -> None:
-	print(f"Running {script}.py...")
-	exitCode = subprocess.call([python, f"{script}.py"])
-	print(f"Script finished with exit code {exitCode}.\n")
+class Job:
+	def __init__(self, root: Tk, applet: str):
+		self.root = root
+		self.applet = applet
+
+	def run():
+		self.__init__(self.root, modes[modeVar.get()])
+		self.thread = Thread(target=self.start)
+		self.thread.start()
+		""" Exit subprocess if GUI is closed """
+		self.root.protocol("WM_DELETE_WINDOW", self.kill)
+	
+	def start(self):
+		self.stopped = False
+		print(f"Running {self.applet}.py...")
+		self.proc = Popen([python, f"{self.applet}.py"], stdin=PIPE)
+	
+	def stop(self):
+		""" Stop subprocess and quit GUI.
+		Avoid killing subprocess more than once. """
+		if self.stopped:
+			print("No process to stop.")
+			return
+		self.stopped = True
+		print(f"Stopping acquisition in '{self.applet}.py'.")
+		out, err = self.proc.communicate(input=b"q\n")
+		self.thread.join()
+		
+		# kill subprocess if it hasn't exited after a countdown	
+		# self.kill_after(countdown=5)
+	
+	def kill(self):
+		if not self.stopped:
+			self.stop()
+		self.root.destroy()
+	
+	# def kill_after(self, countdown: int):
+	# 	if self.proc.poll() is None: # subprocess hasn't exited yet
+	# 		countdown -= 1
+	# 		if countdown < 0:
+	# 			self.proc.kill()
+	# 		else:
+	# 			self.root.after(1000, kill_after, countdown)
+	# 			return
+	# 	self.proc.wait() # wait for the subprocess' exit
+
+
 
 """ Reading runtime parameters from .ini file """
 params = parse_config()
@@ -235,6 +274,7 @@ tabControl.pack(expand=1, fill="both")
 summary = ttk.Labelframe(runTab, text="Summary")
 summary.grid(column=0, row=0, columnspan=2, **asym_left_padding, sticky=W+E+N+S)
 
+""" Summary labelframe contents """
 for i, ch, color in zip(range(4), channelIDs, ["blue", "red", "green3", "gold"]):
 	ttk.Label(summary, text=ch, foreground=color, anchor=E).grid(
 			column=i+1, row=0, padx=(THIN_PAD,0) if i <= 2 else THIN_PAD, pady=(WIDE_PAD,0), sticky=E
@@ -259,18 +299,6 @@ for i, ch in enumerate(channelIDs):
 	ttk.Label(summary, text=f"{params['thresholdmV']:.0f}" if i == channelIDs.index(params["target"]) else "-", anchor=E).grid(
 			column=i+1, row=4, padx=(THIN_PAD,0) if i == 0 else 0, pady=(LINE_PAD,0), sticky=E
 			)
-# ttk.Label(summary, text=f"{chInputRanges[params['chRange']]}", anchor=E).grid(
-# 		column=1, row=1, padx=(0,THIN_PAD), pady=(WIDE_PAD,0), sticky=W+E
-# 		)
-# ttk.Label(summary, text=f"{params['analogOffset'] * 1000}", anchor=E).grid(
-# 		column=1, row=2, padx=(0,THIN_PAD), pady=(LINE_PAD,0), sticky=W+E
-# 		)
-# ttk.Label(summary, text=f"{params['terminalResist']}", anchor=E).grid(
-# 		column=1, row=3, padx=(0,THIN_PAD), pady=(LINE_PAD,0), sticky=W+E
-# 		)
-# ttk.Label(summary, text=f"{thresholdmV:.0f}", anchor=E).grid(
-# 		column=1, row=4, padx=(0,THIN_PAD), pady=(LINE_PAD,0), sticky=W+E
-# 		)
 
 h_separator(summary, row=5, columnspan=5)
 
@@ -304,9 +332,10 @@ logCheckBox = Checkbutton(
 		)
 logCheckBox.grid(column=0, row=12, columnspan=4, pady=(WIDE_PAD,0), sticky=W+S)
 
-startButton = ttk.Button(runTab, text="START", command=lambda : run(modes[modeVar.get()]))
+acquisition = Job(root=root, applet=modes[modeVar.get()])
+startButton = ttk.Button(runTab, text="START", command=acquisition.run)
 startButton.grid(column=0, row=1, padx=(WIDE_PAD,0), pady=0, ipadx=THIN_PAD, ipady=THIN_PAD, sticky=W+S)
-stopButton = ttk.Button(runTab, text="STOP", command=placeholder)
+stopButton = ttk.Button(runTab, text="STOP", command=acquisition.stop)
 stopButton.grid(column=1, row=1, padx=(WIDE_PAD,0), pady=0, ipadx=THIN_PAD, ipady=THIN_PAD, sticky=E+S)
 
 histogramLbf = ttk.Labelframe(runTab, text="Histogram")
@@ -337,7 +366,9 @@ resetButton.grid(column=7, row=2, padx=(THIN_PAD,0), pady=(THIN_PAD,0), sticky=E
 saveButton = Button(runTab, text="Save", width=3, height=1, command=placeholder)
 saveButton.grid(column=8, row=2, padx=(THIN_PAD,0), pady=(THIN_PAD,0), sticky=E+N)
 
-""" Settings tab """
+""" Settings tab. The 'settings' dictionary will store all the
+temporary changes until the 'Apply' button is pressed, when
+such changes will be written to the config.ini file. """
 settings = {}
 
 """ Trigger settings """

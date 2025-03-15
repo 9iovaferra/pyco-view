@@ -10,6 +10,16 @@ from datetime import datetime
 import sys
 from pathlib import Path
 
+class Manager():
+	def __init__(self):
+		self.keystroke = "q"
+		self.continue_ = True
+	
+	def listen(self):
+		event = input("")
+		if event == self.keystroke:
+			self.continue_ = False
+
 def plot_data(
 		bufferChAmV: Array[c_int16],
 		bufferChCmV: Array[c_int16],
@@ -208,8 +218,13 @@ def main():
 	dathandle = f"./Data/adc_data_{timestamp}.txt" # read format from gui
 	with open(dathandle, "a") as out:
 		out.write("cap\tamplitude (mV)\tpeak2peak (mV)\tcharge (C)\n")
+	
+	"""  """
+	manager = Manager()
+	assistant = Thread(target=manager.listen)
+	assistant.start()
 
-	for icap in range(10): # should run indefinitely until Stop is clicked
+	while manager.continue_:
 		""" Logging capture """
 		if params["log"] == 1:
 			log(loghandle, f"==> Beginning capture no. {icap + 1}", time=True)
@@ -332,6 +347,8 @@ def main():
 				for key, value in status.items():
 					log(loghandle, f"{key: <{colWidth}} {value:}")
 			sys.exit(1)
+	
+	assistant.join()
 
 	status["stop"] = ps.ps6000Stop(chandle)
 	assert_pico_ok(status["stop"])
