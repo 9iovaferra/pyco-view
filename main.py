@@ -4,12 +4,13 @@ from tkinter import *
 from tkinter import ttk
 from pycoviewlib.functions import parse_config
 from pycoviewlib.constants import *
+from pycoviewlib.tkSliderWidget.tkSliderWidget import Slider
 from matplotlib.figure import Figure 
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
-from pycoviewlib.tkSliderWidget.tkSliderWidget import Slider
+from threading import Thread
+from subprocess import Popen, PIPE, STDOUT
+from os import path, system
 from typing import Union
-import subprocess
-from os import path
 
 python = path.expanduser("~/.venv/bin/python3")
 
@@ -21,7 +22,7 @@ class RootWindow(Tk):
 		Tk.__init__(self, *args, **kwargs)
 		self.title("PycoView")
 		self.withdraw()
-		self.after(0, self.deiconify)
+		self.after(500, self.deiconify)
 
 class ChannelSettings():
 	def __init__(self, parent, ch_id: str, column: int):
@@ -159,12 +160,17 @@ class Histogram():
 def key_from_value(dictionary: dict, value: int) -> list[str]:
 	return [k for k, v in dictionary.items() if v == value]
 
+def show_data_folder() -> None:
+	home = path.expanduser("~")
+	datapath = path.realpath(home + "/Documents/pyco-view/Data")
+	system(f"xdg-open {datapath}")
+
 class Job:
 	def __init__(self, root: Tk, applet: str):
 		self.root = root
 		self.applet = applet
 
-	def run():
+	def run(self):
 		self.__init__(self.root, modes[modeVar.get()])
 		self.thread = Thread(target=self.start)
 		self.thread.start()
@@ -240,6 +246,12 @@ lbf_contents_padding = {"padx": (THIN_PAD,0), "pady": (MED_PAD,2)}
 """ Main window & frame """
 root = RootWindow()
 
+menuBar = Menu(root)
+fileMenu = Menu(menuBar, tearoff=0)
+menuBar.add_cascade(menu=fileMenu, label="File")
+fileMenu.add_command(label="Open data folder", command=show_data_folder)
+root.config(menu=menuBar)
+
 topFrame = ttk.Frame(root, padding=(THIN_PAD,0,THIN_PAD,THIN_PAD))
 topFrame.grid(column=0, row=0, padx=WIDE_PAD, pady=(WIDE_PAD,0), sticky=N+W+E)
 topFrame.columnconfigure(3, weight=3)
@@ -276,8 +288,8 @@ summary.grid(column=0, row=0, columnspan=2, **asym_left_padding, sticky=W+E+N+S)
 
 """ Summary labelframe contents """
 for i, ch, color in zip(range(4), channelIDs, ["blue", "red", "green3", "gold"]):
-	ttk.Label(summary, text=ch, foreground=color, anchor=E).grid(
-			column=i+1, row=0, padx=(THIN_PAD,0) if i <= 2 else THIN_PAD, pady=(WIDE_PAD,0), sticky=E
+	ttk.Label(summary, text=ch, background=color, foreground="white", anchor=E).grid(
+			column=i+1, row=0, padx=0 if i == 0 else (THIN_PAD,0), pady=(WIDE_PAD,0), sticky=W+E
 			)
 for i, entry in enumerate(["Range (±mV)", "Analog offset (mV)", "Coupling (Ω)", "Threshold (mV)"]):
 	ttk.Label(summary, text=entry).grid(
@@ -285,42 +297,42 @@ for i, entry in enumerate(["Range (±mV)", "Analog offset (mV)", "Coupling (Ω)"
 			)
 for i, entry in enumerate(ranges):
 	ttk.Label(summary, text=entry, anchor=E).grid(
-			column=i+1, row=1, padx=(THIN_PAD,0) if i == 0 else 0, pady=(LINE_PAD,0), sticky=E
+			column=i+1, row=1, padx=0 if i == 0 else (THIN_PAD,0), pady=(LINE_PAD,0), sticky=E
 			)
 for i, entry in enumerate(offsets):
 	ttk.Label(summary, text=int(entry * 1000), anchor=E).grid(
-			column=i+1, row=2, padx=(THIN_PAD,0) if i == 0 else 0, pady=(LINE_PAD,0), sticky=E
+			column=i+1, row=2, padx=0 if i == 0 else (THIN_PAD,0), pady=(LINE_PAD,0), sticky=E
 			)
 for i, entry in enumerate([params["chAcoupling"], params["chBcoupling"], params["chCcoupling"], params["chDcoupling"]]):
 	ttk.Label(summary, text=entry, anchor=E).grid(
-			column=i+1, row=3, padx=(THIN_PAD,0) if i == 0 else 0, pady=(LINE_PAD,0), sticky=E
+			column=i+1, row=3, padx=0 if i == 0 else (THIN_PAD,0), pady=(LINE_PAD,0), sticky=E
 			)
 for i, ch in enumerate(channelIDs):
-	ttk.Label(summary, text=f"{params['thresholdmV']:.0f}" if i == channelIDs.index(params["target"]) else "-", anchor=E).grid(
-			column=i+1, row=4, padx=(THIN_PAD,0) if i == 0 else 0, pady=(LINE_PAD,0), sticky=E
+	ttk.Label(summary, text=f"{params['thresholdmV']:.0f}" if i == channelIDs.index(params["target"]) else "None", anchor=E).grid(
+			column=i+1, row=4, padx=0 if i == 0 else (THIN_PAD,0), pady=(LINE_PAD,0), sticky=E
 			)
 
 h_separator(summary, row=5, columnspan=5)
 
 ttk.Label(summary, text="Timebase").grid(column=0, row=6, padx=(THIN_PAD,0), pady=(WIDE_PAD,0), sticky=W)
 ttk.Label(summary, text=f"{timebases[params['timebase']]}", anchor=E).grid(
-		column=1, row=6, columnspan=4, padx=(0,THIN_PAD), pady=(WIDE_PAD,0), sticky=W+E
+		column=1, row=6, columnspan=4, padx=0, pady=(WIDE_PAD,0), sticky=W+E
 		)
 ttk.Label(summary, text="Trigger delay").grid(column=0, row=7, padx=(THIN_PAD,0), pady=(LINE_PAD,0), sticky=W)
 ttk.Label(summary, text=f"{params['delaySeconds']} s", anchor=E).grid(
-		column=1, row=7, columnspan=4, padx=(0,THIN_PAD), pady=(LINE_PAD,0), sticky=W+E
+		column=1, row=7, columnspan=4, padx=0, pady=(LINE_PAD,0), sticky=W+E
 		)
-ttk.Label(summary, text="Auto-trigger").grid(column=0, row=8, padx=(THIN_PAD,0), pady=(LINE_PAD,0), sticky=W)
+ttk.Label(summary, text="Auto-trigger after").grid(column=0, row=8, padx=(THIN_PAD,0), pady=(LINE_PAD,0), sticky=W)
 ttk.Label(summary, text=f"{params['autoTrigms']} ms", anchor=E).grid(
-		column=1, row=8, columnspan=4, padx=(0,THIN_PAD), pady=(LINE_PAD,0), sticky=W+E
+		column=1, row=8, columnspan=4, padx=0, pady=(LINE_PAD,0), sticky=W+E
 		)
 ttk.Label(summary, text="Pre-trigger samples").grid(column=0, row=9, padx=(THIN_PAD,0), pady=(LINE_PAD,0), sticky=W)
 ttk.Label(summary, text=f"{params['preTrigSamples']}", anchor=E).grid(
-		column=1, row=9, columnspan=4, padx=(0,THIN_PAD), pady=(LINE_PAD,0), sticky=W+E
+		column=1, row=9, columnspan=4, padx=0, pady=(LINE_PAD,0), sticky=W+E
 		)
 ttk.Label(summary, text="Post-trigger samples").grid(column=0, row=10, padx=(THIN_PAD,0), pady=(LINE_PAD,0), sticky=W)
 ttk.Label(summary, text=f"{params['postTrigSamples']}", anchor=E).grid(
-		column=1, row=10, columnspan=4, padx=(0,THIN_PAD), pady=(LINE_PAD,0), sticky=W+E
+		column=1, row=10, columnspan=4, padx=0, pady=(LINE_PAD,0), sticky=W+E
 		)
 
 h_separator(summary, row=11, columnspan=5)
@@ -331,12 +343,18 @@ logCheckBox = Checkbutton(
 		onvalue=1, offvalue=0, command=lambda : update_setting(["log"], [logFlag.get()])
 		)
 logCheckBox.grid(column=0, row=12, columnspan=4, pady=(WIDE_PAD,0), sticky=W+S)
+plotFlag = IntVar(value=params["plot"])
+plotCheckBox = Checkbutton(
+		summary, variable=plotFlag, text="Export figure for each capture",
+		onvalue=1, offvalue=0, command=lambda : update_setting(["plot"], [plotFlag.get()])
+		)
+plotCheckBox.grid(column=0, row=13, columnspan=4, pady=(LINE_PAD,WIDE_PAD), sticky=W+S)
 
 acquisition = Job(root=root, applet=modes[modeVar.get()])
 startButton = ttk.Button(runTab, text="START", command=acquisition.run)
-startButton.grid(column=0, row=1, padx=(WIDE_PAD,0), pady=0, ipadx=THIN_PAD, ipady=THIN_PAD, sticky=W+S)
+startButton.grid(column=0, row=1, padx=(WIDE_PAD,0), pady=0, ipadx=THIN_PAD, ipady=THIN_PAD, sticky=W+E+S)
 stopButton = ttk.Button(runTab, text="STOP", command=acquisition.stop)
-stopButton.grid(column=1, row=1, padx=(WIDE_PAD,0), pady=0, ipadx=THIN_PAD, ipady=THIN_PAD, sticky=E+S)
+stopButton.grid(column=1, row=1, padx=(WIDE_PAD,0), pady=0, ipadx=THIN_PAD, ipady=THIN_PAD, sticky=W+E+S)
 
 histogramLbf = ttk.Labelframe(runTab, text="Histogram")
 histogramLbf.grid(column=2, row=0, columnspan=7, rowspan=2, **hist_padding, sticky=W+E+N+S)
