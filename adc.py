@@ -6,6 +6,7 @@ from pycoviewlib.functions import *
 from pycoviewlib.constants import *
 import matplotlib.pyplot as plt
 from picosdk.functions import adc2mV, assert_pico_ok
+from threading import Thread
 from datetime import datetime
 import sys
 from pathlib import Path
@@ -29,57 +30,62 @@ def plot_data(
 		charge: float,
 		peakToPeak: float,
 		filestamp: str,
+		new: bool
 		) -> None:
 	yLowerLim = min(bufferChAmV) + min(bufferChAmV) * 0.1
 	yUpperLim = max(bufferChAmV) + max(bufferChAmV) * 0.3
 	# yTicks = np.arange(-1000, 0, 50)
 
-	plt.figure(figsize=(10,6))
+	# if new:
+	fig, ax = plt.subplots(figsize=(10,6))
 		
 	""" Channel signals """
-	plt.plot(time, bufferChAmV[:],
+	ax.plot(time, bufferChAmV[:],
 			 color="blue", label="Channel A (gate)")
-	plt.plot(time, bufferChCmV[:],
+	ax.plot(time, bufferChCmV[:],
 			 color="green", label="Channel C (detector signal)")
 	
 	""" Charge area + bounds from gate """
-	plt.fill_between(
+	ax.fill_between(
 			np.arange(gate["open"]["ns"], gate["closed"]["ns"], timeIntervalns.value),
 			bufferChCmV[gate["open"]["index"]:gate["closed"]["index"]], max(bufferChCmV),
 			color="lightgrey", label=f"Total deposited charge\n{charge:.2f} C"
 			)
-	plt.plot([gate["open"]["ns"]] * 2, [gate["open"]["mV"], max(bufferChCmV)],
+	ax.plot([gate["open"]["ns"]] * 2, [gate["open"]["mV"], max(bufferChCmV)],
 			 linestyle="--", color="black")
-	plt.plot([gate["closed"]["ns"]] * 2, [gate["closed"]["mV"], max(bufferChCmV)],
+	ax.plot([gate["closed"]["ns"]] * 2, [gate["closed"]["mV"], max(bufferChCmV)],
 			 linestyle="--", color="black")
 	
 	# """ Threshold """
-	# plt.axhline(y=thresholdmV, linestyle="--", color="black",
+	# ax.axhline(y=thresholdmV, linestyle="--", color="black",
 	#			label=f"Channel A threshold\n{thresholdmV:.2f} mV")
 	
 	""" Gate open and closed points """
-	plt.plot(gate["open"]["ns"], gate["open"]["mV"],
+	ax.plot(gate["open"]["ns"], gate["open"]["mV"],
 			 color="black", marker=">", label=f"Gate open\n{gate['open']['ns']:.2f} ns")
-	plt.plot(gate["closed"]["ns"], gate["closed"]["mV"],
+	ax.plot(gate["closed"]["ns"], gate["closed"]["mV"],
 			 color="black", marker="<", label=f"Gate closed\n{gate['closed']['ns']:.2f} ns")
 	
 	""" Amplitude and Peak-To-Peak """
-	plt.annotate(
+	ax.annotate(
 			"",
 			xy=(time[bufferChCmV.index(max(bufferChCmV))], max(bufferChCmV)),
 			xytext=(time[bufferChCmV.index(max(bufferChCmV))], peakToPeak * (-1)),
 			fontsize=12,
 			arrowprops=dict(edgecolor="black", arrowstyle="<->", shrinkA=0, shrinkB=0)
 			)
-	plt.text(time[bufferChCmV.index(max(bufferChCmV))] + 0.5,
+	ax.text(time[bufferChCmV.index(max(bufferChCmV))] + 0.5,
 			 max(bufferChCmV) - peakToPeak / 2,
 			 f"Peak-to-peak\n{peakToPeak:.2f} mV")
 
-	plt.xlabel('Time (ns)')
-	plt.ylim(yLowerLim,yUpperLim)
-	plt.ylabel('Voltage (mV)')
-	plt.legend(loc="lower right")
-	plt.savefig(f"./Data/adc_plot_{filestamp}.png")
+	ax.set_xlabel('Time (ns)')
+	ax.set_ylim(yLowerLim,yUpperLim)
+	ax.set_ylabel('Voltage (mV)')
+	ax.legend(loc="lower right")
+	ax.set_title(f"adc_plot_{filestamp}")
+	fig.savefig(f"./Data/adc_plot_{filestamp}.png")
+	# for artist in ax.lines + ax.collections:
+	#	artist.remove()
 
 def log(loghandle: str, entry: str, time=False) -> None:
 	with open(f"./Data/{loghandle}", "a") as logfile:
@@ -136,7 +142,7 @@ def main():
 	""" Logging runtime parameters """
 	if params["log"] == 1:
 		log(loghandle, "==> Running acquisition with parameters:", time=True)
-		params = dict(zip(
+		runtime_params = dict(zip(
 			["delaySeconds", "chRangemV", "analogOffset", "thresholdADC",
 			"autoTrigms", "preTrigSamples", "postTrigSamples", "maxSamples",
 			"timebase", "coupling"],
@@ -144,8 +150,8 @@ def main():
 			autoTrigms, preTrigSamples, postTrigSamples, maxSamples, timebase,
 			coupling]
 			))	
-		width = max([len(k) for k in params.keys()])
-		for k, v in params.items():
+		width = max([len(k) for k in runtime_params.keys()])
+		for k, v in runtime_params.items():
 			log(loghandle, f"{k: <{width}} {v:}")
 
 	status["openUnit"] = ps.ps6000OpenUnit(byref(chandle), None)
@@ -219,15 +225,18 @@ def main():
 	with open(dathandle, "a") as out:
 		out.write("cap\tamplitude (mV)\tpeak2peak (mV)\tcharge (C)\n")
 	
-	"""  """
+	""" Thread manager waiting for Stop command """
 	manager = Manager()
 	assistant = Thread(target=manager.listen)
 	assistant.start()
 
+	""" Capture counter """
+	capcount = 1
+
 	while manager.continue_:
 		""" Logging capture """
 		if params["log"] == 1:
-			log(loghandle, f"==> Beginning capture no. {icap + 1}", time=True)
+			log(loghandle, f"==> Beginning capture no. {capcount}", time=True)
 		
 		""" Run block capture
 		number of pre-trigger samples = preTrigSamples
@@ -330,13 +339,14 @@ def main():
 
 		""" Print data to file """
 		with open(dathandle, "a") as out:
-			out.write(f"{icap + 1}\t{amplitude:.9f}\t{peakToPeak:.9f}\t{charge:.9f}\n")
+			out.write(f"{capcount}\t{amplitude:.9f}\t{peakToPeak:.9f}\t{charge:.9f}\n")
 
-		# if runtimeOptions["plot"]:
-		plot_data(
-				bufferChAmV, bufferChCmV, gate, time, timeIntervalns,
-				charge, peakToPeak, f"{timestamp}_{str(icap)}"
-				)
+		if params["plot"]:
+			plot_data(
+					bufferChAmV, bufferChCmV, gate, time, timeIntervalns,
+					charge, peakToPeak, f"{timestamp}_{str(capcount)}",
+					new=True if capcount == 1 else False
+					)
 
 		""" Checking if everything is fine """
 		if not 0 in status.values():
@@ -346,7 +356,9 @@ def main():
 				colWidth = max([len(k) for k in status.keys()])
 				for key, value in status.items():
 					log(loghandle, f"{key: <{colWidth}} {value:}")
-			sys.exit(1)
+			break
+
+		capcount +=1
 	
 	assistant.join()
 
