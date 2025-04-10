@@ -30,62 +30,69 @@ def plot_data(
 		charge: float,
 		peakToPeak: float,
 		filestamp: str,
-		new: bool
+		n: int
 		) -> None:
 	yLowerLim = min(bufferChAmV) + min(bufferChAmV) * 0.1
 	yUpperLim = max(bufferChAmV) + max(bufferChAmV) * 0.3
 	# yTicks = np.arange(-1000, 0, 50)
 
-	# if new:
-	fig, ax = plt.subplots(figsize=(10,6))
+	# if n % 20 == 0:
+	# 	plt.close()
+	if n == 1:
+		print("New plot!")
+		fig = plt.figure(figsize=(10,6))
+		plt.grid()
+		plt.xlabel('Time (ns)')
+		plt.ylim(yLowerLim,yUpperLim)
+		plt.ylabel('Voltage (mV)')
+	
+	# fig, ax = plt.subplots(figsize=(10,6))
+	# ax.grid()
 		
 	""" Channel signals """
-	ax.plot(time, bufferChAmV[:],
+	plt.plot(time, bufferChAmV[:],
 			 color="blue", label="Channel A (gate)")
-	ax.plot(time, bufferChCmV[:],
+	plt.plot(time, bufferChCmV[:],
 			 color="green", label="Channel C (detector signal)")
 	
 	""" Charge area + bounds from gate """
-	ax.fill_between(
-			np.arange(gate["open"]["ns"], gate["closed"]["ns"], timeIntervalns.value),
-			bufferChCmV[gate["open"]["index"]:gate["closed"]["index"]], max(bufferChCmV),
-			color="lightgrey", label=f"Total deposited charge\n{charge:.2f} C"
-			)
-	ax.plot([gate["open"]["ns"]] * 2, [gate["open"]["mV"], max(bufferChCmV)],
+	fillY = bufferChCmV[gate["open"]["index"]:gate["closed"]["index"]]
+	fillX = np.linspace(gate["open"]["ns"], gate["closed"]["ns"], num=len(fillY))
+	plt.fill_between(fillX, fillY,
+			color="lightgrey", label=f"Total deposited charge\n{charge:.2f} C")
+	plt.plot([gate["open"]["ns"]] * 2, [gate["open"]["mV"], max(bufferChCmV)],
 			 linestyle="--", color="black")
-	ax.plot([gate["closed"]["ns"]] * 2, [gate["closed"]["mV"], max(bufferChCmV)],
+	plt.plot([gate["closed"]["ns"]] * 2, [gate["closed"]["mV"], max(bufferChCmV)],
 			 linestyle="--", color="black")
 	
 	# """ Threshold """
-	# ax.axhline(y=thresholdmV, linestyle="--", color="black",
+	# plt.plt.line(y=thresholdmV, linestyle="--", color="black",
 	#			label=f"Channel A threshold\n{thresholdmV:.2f} mV")
 	
 	""" Gate open and closed points """
-	ax.plot(gate["open"]["ns"], gate["open"]["mV"],
+	plt.plot(gate["open"]["ns"], gate["open"]["mV"],
 			 color="black", marker=">", label=f"Gate open\n{gate['open']['ns']:.2f} ns")
-	ax.plot(gate["closed"]["ns"], gate["closed"]["mV"],
+	plt.plot(gate["closed"]["ns"], gate["closed"]["mV"],
 			 color="black", marker="<", label=f"Gate closed\n{gate['closed']['ns']:.2f} ns")
 	
 	""" Amplitude and Peak-To-Peak """
-	ax.annotate(
+	p2p_artist = [None, None]
+	p2p_artist[0] = plt.annotate(
 			"",
 			xy=(time[bufferChCmV.index(max(bufferChCmV))], max(bufferChCmV)),
 			xytext=(time[bufferChCmV.index(max(bufferChCmV))], peakToPeak * (-1)),
 			fontsize=12,
 			arrowprops=dict(edgecolor="black", arrowstyle="<->", shrinkA=0, shrinkB=0)
 			)
-	ax.text(time[bufferChCmV.index(max(bufferChCmV))] + 0.5,
+	p2p_artist[1] = plt.text(time[bufferChCmV.index(max(bufferChCmV))] + 0.5,
 			 max(bufferChCmV) - peakToPeak / 2,
 			 f"Peak-to-peak\n{peakToPeak:.2f} mV")
 
-	ax.set_xlabel('Time (ns)')
-	ax.set_ylim(yLowerLim,yUpperLim)
-	ax.set_ylabel('Voltage (mV)')
-	ax.legend(loc="lower right")
-	ax.set_title(f"adc_plot_{filestamp}")
-	fig.savefig(f"./Data/adc_plot_{filestamp}.png")
-	# for artist in ax.lines + ax.collections:
-	#	artist.remove()
+	plt.title(f"adc_plot_{filestamp}")
+	plt.legend(loc="lower right")
+	plt.savefig(f"./Data/adc_plot_{filestamp}.png")
+	for artist in plt.gca().lines + plt.gca().collections + p2p_artist:
+		artist.remove()
 
 def log(loghandle: str, entry: str, time=False) -> None:
 	with open(f"./Data/{loghandle}", "a") as logfile:
@@ -96,9 +103,8 @@ def log(loghandle: str, entry: str, time=False) -> None:
 
 
 def main():
-	# runtimeOptions: dict = parse_args(sys.argv)
 	params: dict = parse_config()
-	print_status(params)
+	# print_status(params)
 
 	timestamp: str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 	
@@ -312,7 +318,7 @@ def main():
 				0, (cmaxSamples.value - 1) * timeIntervalns.value, cmaxSamples.value, dtype="float32"
 				)
 
-		""" Detect datapoints where the threshold was hit (both falling & rising edge) """
+		""" Detect where the threshold was hit (both falling & rising edge) """
 		gate = detect_gate_open_closed(
 				bufferChAmV, time, thresholdmV, maxSamples, timeIntervalns.value
 				)
@@ -336,7 +342,7 @@ def main():
 			log(loghandle, f"amplitude: {amplitude:.2f}mV")
 			log(loghandle, f"peak-to-peak: {peakToPeak:.2f}mV")
 			log(loghandle, f"charge: {charge:.2f}C")
-
+	
 		""" Print data to file """
 		with open(dathandle, "a") as out:
 			out.write(f"{capcount}\t{amplitude:.9f}\t{peakToPeak:.9f}\t{charge:.9f}\n")
@@ -345,18 +351,17 @@ def main():
 			plot_data(
 					bufferChAmV, bufferChCmV, gate, time, timeIntervalns,
 					charge, peakToPeak, f"{timestamp}_{str(capcount)}",
-					new=True if capcount == 1 else False
+					n=capcount
 					)
 
 		""" Checking if everything is fine """
 		if not 0 in status.values():
-			""" Logging error(s) """
+			manager.continue_ = False
 			if params["log"] == 1:
 				log(loghandle, "==> Something went wrong! PicoScope status:", time=True)
 				colWidth = max([len(k) for k in status.keys()])
 				for key, value in status.items():
 					log(loghandle, f"{key: <{colWidth}} {value:}")
-			break
 
 		capcount +=1
 	
