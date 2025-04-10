@@ -22,7 +22,7 @@ class RootWindow(Tk):
 		Tk.__init__(self, *args, **kwargs)
 		self.title("PycoView")
 		self.withdraw()
-		self.after(500, self.deiconify)
+		self.after(0, self.deiconify)
 
 class ChannelSettings():
 	def __init__(self, parent, ch_id: str, column: int):
