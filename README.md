@@ -60,3 +60,7 @@ Repo ufficiale: [picosdk-python-wrappers](https://github.com/picotech/picosdk-py
   sudo apt-get install libopenblas-dev
   ```
 A questo punto lanciando l'importazione del modulo con "from picosdk import ps6000 as ps" dovrebbe andare a buon fine.
+
+## Problemi comuni
+### La finestra dell'app non appare
+Una possibile causa è un errore di Tkinter: `_tkinter.tclerror: couldn't connect to display` dovuto al fatto che il modulo non è compatibile con il server grafico Wayland. Per risolvere il problema bisogna passare al server X11, attraverso il menu da terminale `raspi-config` 
