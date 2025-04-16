@@ -2,7 +2,7 @@
 from picosdk.ps6000 import ps6000 as ps
 from picosdk.functions import adc2mV, assert_pico_ok
 from pycoviewlib.functions import *
-from pycoviewlib.constants import chInputRanges
+from pycoviewlib.constants import *
 from ctypes import c_int16, c_uint16, c_int32, c_float, Array, byref
 import numpy as np
 import matplotlib.pyplot as plt
@@ -16,6 +16,16 @@ from time import time as get_time
 # Delay error simulation
 from fitter import Fitter, get_common_distributions, get_distributions
 from statistics import fmean
+
+class Manager():
+	def __init__(self):
+		self.keystroke = "q"
+		self.continue_ = True
+	
+	def listen(self):
+		event = input("")
+		if event == self.keystroke:
+			self.continue_ = False
 
 def plot_data(
 		bufferChAmV: Array[c_int16],
@@ -128,13 +138,6 @@ def make_histogram(data: list) -> None:
 	plt.ylabel("Counts")
 	plt.show()
 
-def log(loghandle: str, entry: str, time=False) -> None:
-	with open(f"./Data/{loghandle}", "a") as logfile:
-		if time:
-			logfile.write(f"[{dt.now().strftime('%H:%M:%S')}] {entry}\n")
-		else:
-			logfile.write(f"           {entry}\n")
-
 class Benchmark:
 	def __init__(self):
 		self.stopwatch = [get_time()]
@@ -153,12 +156,8 @@ class Benchmark:
 		print(f"Event resolution: {1/avg:.1f} Hz")
 
 def main():
-	runtimeOptions: dict = parse_args(sys.argv)
-
-	timestamp = dt.now().strftime("%Y-%m-%d_%H-%M-%S")
-	
 	""" Creating loghandle if required """
-	if runtimeOptions["log"]:
+	if params["log"] == 1:
 		loghandle: str = f"tdc_log_{timestamp}.txt"
 	
 	""" Creating data folder if not already present """
@@ -174,25 +173,23 @@ def main():
 		sys.exit(1)
 	
 	""" Creating data output file """
-	datahandle = f"./Data/tdc_data_{timestamp}.{runtimeOptions['dformat']}"
+	datahandle: str = f"./Data/tdc_data_{timestamp}.{params['dformat']}}"
 	with open(datahandle, "a") as out:
 		out.write("cap\t\tdeltaT (ns)\n")
 	
-	""" Reading runtime parameters from .ini file """
-	params = {}
-	with open("config.ini", "r") as ini:
-		for p in ini.readlines()[1:]:
-			p = p.rstrip("\n").split(" = ")
-			params[p[0]] = int(p[1]) if p[1].isdigit() else float(p[1])
-	params["maxSamples"] = params["preTrigSamples"] + params["postTrigSamples"]
-	
-	""" Logging runtime parameters """
-	if runtimeOptions["log"]:
-		log(loghandle, "==> Running acquisition with parameters:", time=True)
-		colWidth = max([len(k) for k in params.keys()])
-		for key, value in params.items():
-			log(loghandle, f"{key: <{colWidth}} {value:}")
+	params: dict = parse_config()
+	chRange = tuple([params[f"ch{id_}range"] for id_ in channelIDs \
+			if params[f"ch{id_}enabled"] == 1])
 
+	""" Logging runtime parameters """
+	if params["log"] == 1:
+		log(loghandle, "==> Running acquisition with parameters:", time=True)
+		col_width = max([len(k) for k in params.keys()])
+		for key, value in params.items():
+			log(loghandle, f"{key: <{col_width}} {value:}")
+
+	timestamp = dt.now().strftime("%Y-%m-%d_%H-%M-%S")
+	
 	""" Creating chandle and status. Setting acquisition parameters.
 	Opening ps6000 connection: returns handle for future use in API functions
 	"""
@@ -202,30 +199,31 @@ def main():
 	status["openUnit"] = ps.ps6000OpenUnit(byref(chandle), None)
 	assert_pico_ok(status["openUnit"])
 
-	""" Setting up channel A and C (B and D turned off)
-				A			B
-	handle		chandle		chandle
-	channel		ChA=0		ChB=1
-	enabled		1			1
-	coupling	DC=1		DC=1	(50ohm)
-	range		500mV=5		500mV=5
-	offset		0V			0V
-	bandwidth	Full=0		Full=0
-	"""
+	""" Setting up two channels, others turned off
+	ps.ps6000SetChannel(
+		handle:		chandle
+		id:			(A=0, B=1, C=2, D=4)
+		enabled:	(yes=1, no=0)
+		coupling:	(AC1Mohm=0, DC1Mohm=1, DC50ohm=2)
+		range:		see chInputRanges in pycoviewlib/constants.py
+		offset:		analog offset (value in volts)
+		bandwidth:	(FULL=0, 20MHz=1, 25MHz=2)
+	) """
+	# automate this process so that any 2 channels can be used
 	status["setChA"] = ps.ps6000SetChannel(
-			chandle, 0, 1, 1, params["chRange"], params["analogOffset"], 0
+			chandle, 0, params["chAenabled"], 1, params["chARange"], params["chAanalogOffset"], 0
 			)
 	assert_pico_ok(status["setChA"])
 	status["setChB"] = ps.ps6000SetChannel(
-			chandle, 1, 0, 1, params["chRange"], 0, 0
+			chandle, 1, params["chBenabled"], 1, params["chBRange"], 0, 0
 			)
 	assert_pico_ok(status["setChB"])
 	status["setChC"] = ps.ps6000SetChannel(
-			chandle, 2, 1, 1, params["chRange"], params["analogOffset"], 0
+			chandle, 2, params["chCenabled"], 1, params["chCRange"], params["chCanalogOffset"], 0
 			)
 	assert_pico_ok(status["setChC"])
 	status["setChD"] = ps.ps6000SetChannel(
-			chandle, 3, 0, 1, params["chRange"], 0, 0
+			chandle, 3, params["chDenabled"], 1, params["chDRange"], 0, 0
 			)
 	assert_pico_ok(status["setChD"])
 	
@@ -238,6 +236,7 @@ def main():
 	auto Trigger = 5000ms (both)
 	delay = 0s (both)
 	"""
+	# these should change based on what channels are selected
 	triggerConditions = ps.PS6000_TRIGGER_CONDITIONS(
 			ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_TRUE"],
 			ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_DONT_CARE"],
@@ -249,12 +248,13 @@ def main():
 			)
 	nTrigConditions = 1
 
-	status["setTriggerChannelConditions"] = ps.ps6000SetTriggerChannelConditions(
+	status["setTriggerChConditions"] = ps.ps6000SetTriggerChannelConditions(
 			chandle, byref(triggerConditions), nTrigConditions
 			)
-	assert_pico_ok(status["setTriggerChannelConditions"])
+	assert_pico_ok(status["setTriggerChConditions"])
 
 	Properties = ps.PS6000_TRIGGER_CHANNEL_PROPERTIES * 2
+	# these should change based on what channels are selected
 	channelProperties = Properties(
 			ps.PS6000_TRIGGER_CHANNEL_PROPERTIES(
 				params["thresholdADC"], 0, 0, 0, ps.PS6000_CHANNEL["PS6000_CHANNEL_A"],
@@ -274,6 +274,7 @@ def main():
 	status["setTriggerDelay"] = ps.ps6000SetTriggerDelay(chandle, params["delaySeconds"])
 	assert_pico_ok(status["setTriggerDelay"])
 
+	# these should change based on what channels are selected
 	status["setTriggerChannelDirections"] = ps.ps6000SetTriggerChannelDirections(
 			chandle, 
 			ps.PS6000_THRESHOLD_DIRECTION["PS6000_BELOW"],
@@ -306,7 +307,7 @@ def main():
 	cmaxSamples = c_int32(params["maxSamples"])
 
 	""" Maximum ADC count value """
-	maxADC = c_int16(32512)
+	cmaxADC = c_int16(maxADC)
 
 	""" Matplotlib interactive mode on """
 	if runtimeOptions["livehist"]:
@@ -316,10 +317,13 @@ def main():
 	""" Benchmarking """
 	benchmark = Benchmark()
 
-	for icap in range(runtimeOptions["captures"]):
+	""" Capture counter """
+	capcount = 1
+
+	while manager.continue_:
 		""" Logging capture """
-		if runtimeOptions["log"]:
-			log(loghandle, f"==> Beginning capture no. {icap + 1}", time=True)
+		if params["log"]:
+			log(loghandle, f"==> Beginning capture no. {capcount}", time=True)
 
 		""" Run block capture
 		number of pre-trigger samples = params["preTrigSamples"]
@@ -382,12 +386,12 @@ def main():
 		assert_pico_ok(status["getValues"])		
 
 		""" Convert ADC counts data to mV """
-		bufferChAmV = adc2mV(bufferAMax, params["chRange"], maxADC)
-		bufferChCmV = adc2mV(bufferCMax, params["chRange"], maxADC)
+		bufferChAmV = adc2mV(bufferAMax, params["chRange"], cmaxADC)
+		bufferChCmV = adc2mV(bufferCMax, params["chRange"], cmaxADC)
 
 		""" Removing the analog offset from data points """
 		thresholdmV = (params["thresholdADC"] * chInputRanges[params["chRange"]]) \
-				/ maxADC.value - (params["analogOffset"] * 1000)
+				/ cmaxADC.value - (params["analogOffset"] * 1000)
 		for i in range(params["maxSamples"]):
 			bufferChAmV[i] -= (params["analogOffset"] * 1000)
 			bufferChCmV[i] -= (params["analogOffset"] * 1000)
@@ -398,7 +402,7 @@ def main():
 				cmaxSamples.value, dtype="float32"
 				)
 
-		""" Detect datapoints where the threshold was hit (both falling & rising edge) """
+		""" Detect where the threshold was hit (both falling & rising edge) """
 		gate = {"chA": {}, "chC": {}}
 		gate["chA"] = detect_gate_open_closed(
 				bufferChAmV, time, thresholdmV, params["maxSamples"], timeIntervalns.value
@@ -413,15 +417,17 @@ def main():
 			log(loghandle,
 				f"gate off: {gate['chA']['closed']['mV']:.2f}mV, {gate['chA']['closed']['ns']:.2f}ns @ {gate['chA']['closed']['index']}")
 
+		""" Calculating relevant data """
 		deltaT = gate["chC"]["open"]["ns"] - gate["chA"]["open"]["ns"]
+		
 		""" Print data to file """
 		with open(f"./Data/tdc_data_{timestamp}.txt", "a") as out:
-			out.write(f"{icap + 1}\t{deltaT:.9f}\n")
+			out.write(f"{capcount}\t{deltaT:.9f}\n")
 
-		if runtimeOptions["plot"]:
+		if params["plot"] == 1:
 			plot_data(
-					bufferChAmV, bufferChCmV, gate, time, deltaT, timeIntervalns.value,
-					f"{timestamp}_{str(icap)}"
+					bufferChAmV, bufferChCmV, gate, time, deltaT,
+					timeIntervalns.value, f"{timestamp}_{capcount}"
 					)
 
 		""" Updating live histogram """
@@ -453,6 +459,7 @@ def main():
 				plt.ioff()
 				plt.show()
 
+		capcount += 1
 		benchmark.split()
 
 		""" Checking if everything is fine """
@@ -481,14 +488,14 @@ def main():
 	benchmark.results()
 
 	""" Logging exit status & data location """
-	if runtimeOptions["log"]:
+	if params["log"] == 1:
 		log(loghandle,
 			"==> Job finished without errors. Data and/or plots saved to:", time=True)
 		log(loghandle, f"{str(dataPath)}")
 		log(loghandle, "==> PicoScope exit status:", time=True)
-		colWidth = max([len(k) for k in status.keys()])
+		col_width = max([len(k) for k in status.keys()])
 		for key, value in status.items():
-			log(loghandle, f"{key: <{colWidth}} {value:}")
+			log(loghandle, f"{key: <{colwidth}} {value:}")
 
 
 if __name__ == "__main__":

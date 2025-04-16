@@ -148,45 +148,38 @@ def main():
 	""" Logging runtime parameters """
 	if params["log"] == 1:
 		log(loghandle, "==> Running acquisition with parameters:", time=True)
-		runtime_params = dict(zip(
-			["delaySeconds", "chRangemV", "analogOffset", "thresholdADC",
-			"autoTrigms", "preTrigSamples", "postTrigSamples", "maxSamples",
-			"timebase", "coupling"],
-			[delaySeconds, chInputRanges[chRange], analogOffset, thresholdADC,
-			autoTrigms, preTrigSamples, postTrigSamples, maxSamples, timebase,
-			coupling]
-			))	
-		width = max([len(k) for k in runtime_params.keys()])
-		for k, v in runtime_params.items():
-			log(loghandle, f"{k: <{width}} {v:}")
+		col_width = max([len(k) for k in params.keys()])
+		for key, value in params.items():
+			log(loghandle, f"{key: <{col_width}} {value:}")
 
 	status["openUnit"] = ps.ps6000OpenUnit(byref(chandle), None)
 	assert_pico_ok(status["openUnit"])
 
-	""" Setting up channel A and C (B and D turned off)
-				A			C
-	handle		chandle		chandle
-	channel		ChA=0		ChC=2
-	enabled		1			1
-	coupling	DC=1		DC=1	(50ohm)
-	range		500mV=5		500mV=5
-	offset		0V			0V
-	bandwidth	Full=0		Full=0
-	"""
+	""" Setting up two channels, others turned off
+	ps.ps6000SetChannel(
+		handle:		chandle
+		id:			(A=0, B=1, C=2, D=4)
+		enabled:	(yes=1, no=0)
+		coupling:	(AC1Mohm=0, DC1Mohm=1, DC50ohm=2)
+		range:		see chInputRanges in pycoviewlib/constants.py
+		offset:		analog offset (value in volts)
+		bandwidth:	(FULL=0, 20MHz=1, 25MHz=2)
+	) """
+	# automate this process so that any 2 channels can be used
 	status["setChA"] = ps.ps6000SetChannel(
-			chandle, 0, params["chAenabled"], 1, chRange, analogOffset, params["chAbandwidth"]
+			chandle, 0, params["chAenabled"], 2, chRange, analogOffset, params["chAbandwidth"]
 			)
 	assert_pico_ok(status["setChA"])
 	status["setChB"] = ps.ps6000SetChannel(
-			chandle, 1, params["chBenabled"], 1, chRange, 0, 0
+			chandle, 1, params["chBenabled"], 2, chRange, 0, 0
 			)
 	assert_pico_ok(status["setChB"])
 	status["setChC"] = ps.ps6000SetChannel(
-			chandle, 2, params["chCenabled"], 1, chRange, analogOffset, params["chCbandwidth"]
+			chandle, 2, params["chCenabled"], 2, chRange, analogOffset, params["chCbandwidth"]
 			)
 	assert_pico_ok(status["setChC"])
 	status["setChD"] = ps.ps6000SetChannel(
-			chandle, 3, params["chDenabled"], 1, chRange, 0, 0
+			chandle, 3, params["chDenabled"], 2, chRange, 0, 0
 			)
 	assert_pico_ok(status["setChD"])
 
