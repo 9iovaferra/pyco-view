@@ -2,31 +2,16 @@
 from pycoviewlib.constants import maxADC
 from ctypes import c_int16, Array
 import numpy as np
-
-""" Print status in columns (debug purposes) """
-def print_status(status: dict) -> None:
-	if bool(status):
-		print("==> PicoScope Exit Status:")
-		colWidth = max([len(k) for k in status.keys()])
-		for key, value in status.items():
-			print(f"{key: <{colWidth}} {value:}")
-	else:
-		print("No status to show.")
-
-def _isfloat(value: str) -> bool:
-	try:
-		float(value)
-		return True
-	except ValueError:
-		return False
+from datetime import datetime as dt
 
 def mV2adc(thresh: float, offset: float, range_: int) -> int:
+	""" Convert ADC counts to millivolts """
 	thresholdADC = int((thresh + offset * 1000) / range_ * maxADC)
 	
 	return thresholdADC
 
-""" Reading runtime parameters from .ini file """
 def parse_config() -> dict:
+	""" Parser for .ini file """
 	params = {}
 	with open("config.ini", "r") as ini:
 		for line in ini:
@@ -41,13 +26,15 @@ def parse_config() -> dict:
 				params[p[0]] = p[1]
 			else:
 				params[p[0]] = list(int(v) for v in p[1].split(","))
-
 	params["maxSamples"] = params["preTrigSamples"] + params["postTrigSamples"]
+	# Convert target channels to list if more than one
+	if len(params["target"]) > 1:
+		params["target"] = list(params["target"])
 
 	return params
 
-""" Parse input arguments """
 def parse_args(args: list) -> dict:
+	""" Parse command line arguments """
 	options = dict.fromkeys([
 		"captures", "plot", "log", "dformat", "trigs", "livehist"
 		])
@@ -117,3 +104,34 @@ def calculate_charge(
 	charge *= (timeIntervalns / resistance)
 	
 	return charge
+
+def log(loghandle: str, entry: str, time=False) -> None:
+	""" Write to log file """
+	with open(f"./Data/{loghandle}", "a") as logfile:
+		if time:
+			logfile.write(f"[{dt.now().strftime('%H:%M:%S')}] {entry}\n")
+		else:
+			logfile.write(f"\t{entry}\n")
+
+### UTILITIES ###
+
+def print_status(status: dict) -> None:
+	""" Print status in columns (debug purposes) """
+	if bool(status):
+		print("==> PicoScope Exit Status:")
+		col_width = max([len(k) for k in status.keys()])
+		for key, value in status.items():
+			print(f"{key: <{col_width}} {value:}")
+	else:
+		print("No status to show.")
+
+def key_from_value(dictionary: dict, value: int) -> list[str]:
+	return [k for k, v in dictionary.items() if v == value]
+
+def _isfloat(value: str) -> bool:
+	try:
+		float(value)
+		return True
+	except ValueError:
+		return False
+
