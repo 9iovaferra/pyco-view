@@ -2,7 +2,7 @@
 """ tkSliderWidget Copyright (c) 2020, Mengxun Li """
 from tkinter import *
 from tkinter import ttk
-from pycoviewlib.functions import parse_config
+from pycoviewlib.functions import parse_config, key_from_value
 from pycoviewlib.constants import *
 from pycoviewlib.tkSliderWidget.tkSliderWidget import Slider
 from matplotlib.figure import Figure 
@@ -11,6 +11,7 @@ from threading import Thread
 from subprocess import Popen, PIPE, STDOUT
 from os import path, system
 from typing import Union
+from webbrowser import open_new
 
 python = path.expanduser("~/.venv/bin/python3")
 
@@ -20,9 +21,55 @@ def placeholder():
 class RootWindow(Tk):
 	def __init__(self, *args, **kwargs):
 		Tk.__init__(self, *args, **kwargs)
+		self.after(0, self.hide())
 		self.title("PycoView")
-		self.withdraw()
-		self.after(0, self.deiconify)
+		self.menu_bar = Menu(self)
+		self.config(menu=self.menu_bar)
+		self.file_menu = Menu(self.menu_bar, tearoff=0)
+		self.menu_bar.add_cascade(menu=self.file_menu, label="File")
+		self.file_menu.add_command(label="Open data folder", command=self.show_data_folder)
+		self.help_menu = Menu(self.menu_bar, tearoff=0)
+		self.menu_bar.add_cascade(menu=self.help_menu, label="Help")
+		self.help_menu.add_command(label="About", command=self.open_about_window)
+
+	def hide(self, target=None) -> None:
+		""" Hide window until widgets are drawn to avoid visual glitch """
+		if target is None:
+			target = self
+		self.attributes("-alpha", 0.0)
+
+	def center(self, target=None) -> None:
+		if target is None:
+			target = self
+		target.update_idletasks()
+		screen_w = target.winfo_screenwidth()
+		screen_h = target.winfo_screenheight()
+		border_w = target.winfo_rootx() - target.winfo_x()
+		title_h = target.winfo_rooty() - target.winfo_y()
+		target_w = target.winfo_width() + 2 * border_w
+		target_h = target.winfo_height() + title_h + border_w
+		x = (screen_w - target_w) // 2
+		y = (screen_h - target_h) // 2
+		target.geometry(f"+{x}+{y}")
+		target.attributes("-alpha", 1.0)
+
+	def show_data_folder(self) -> None:
+		home = path.expanduser("~")
+		datapath = path.realpath(home + "/Documents/pyco-view/Data")
+		system(f"xdg-open {datapath}")
+
+	def open_about_window(self) -> None:
+		about = Toplevel()
+		about.after(0, about.hide())
+		about.title("About")
+		title = ttk.Label(about, text="PycoView", font=18, anchor=CENTER)
+		title.grid(column=0, row=0, **uniform_padding, sticky=N+W+E)
+		app_version = ttk.Label(about, text="v0.57 (pre-alpha)", anchor=CENTER)
+		app_version.grid(column=0, row=1, **uniform_padding, sticky=N+W+E)
+		link = ttk.Label(about, text="Github Repository", foreground="blue", cursor="hand2", anchor=CENTER)
+		link.grid(column=0, row=2, **uniform_padding, sticky=S+W+E)
+		link.bind("<Button-1>", lambda _: open_new("https://github.com/9iovaferra/pyco-view"))
+		self.center(target=about)
 
 class ChannelSettings():
 	def __init__(self, parent, ch_id: str, column: int):
@@ -95,6 +142,9 @@ def h_separator(parent, row: int, columnspan: int) -> None:
 			sticky=W+E
 			)
 
+def target_selection(flags: list[StringVar], targets: StringVar) -> None:
+	targets.set(flags[0].get() + flags[1].get() + flags[2].get() + flags[3].get())
+
 def apply_changes(settings: dict) -> None:
 	keys = []
 	values = []
@@ -157,14 +207,6 @@ class Histogram():
 		self.canvas.draw()
 		self.canvas.get_tk_widget().grid(column=0, row=0, padx=THIN_PAD, pady=THIN_PAD, sticky=W+E+N+S)
 
-def key_from_value(dictionary: dict, value: int) -> list[str]:
-	return [k for k, v in dictionary.items() if v == value]
-
-def show_data_folder() -> None:
-	home = path.expanduser("~")
-	datapath = path.realpath(home + "/Documents/pyco-view/Data")
-	system(f"xdg-open {datapath}")
-
 class Job:
 	def __init__(self, root: Tk, applet: str):
 		self.root = root
@@ -212,7 +254,6 @@ class Job:
 	# 	self.proc.wait() # wait for the subprocess' exit
 
 
-
 """ Reading runtime parameters from .ini file """
 params = parse_config()
 
@@ -223,14 +264,6 @@ for k, v in params.items():
 		offsets.append(v)
 	elif "range" in k:
 		ranges.append(chInputRanges[v])
-# params["thresholdmV"] = []
-# for t, o, r in zip(params["target"], offsets, ranges):
-# 	params["thresholdmV"].append((params["thresholdADC"] * r) / maxADC - (o * 1000) if t == 1 else None)
-
-# params["thresholdmV"] = int(
-# 		params["thresholdADC"] / maxADC * chInputRanges[params[f"ch{params['target']}range"]] \
-# 				- (params[f"ch{params['target']}analogOffset"] * 1000)
-# 		)
 
 """ Padding presets (frame padding: 'left top right bottom') """
 THIN_PAD = 6
@@ -243,14 +276,8 @@ hist_padding = {"padx": (WIDE_PAD,0), "pady": (WIDE_PAD,0), "ipadx": 0, "ipady":
 lbf_padding = {"padx": WIDE_PAD, "pady": WIDE_PAD, "ipadx": THIN_PAD, "ipady": THIN_PAD}
 lbf_contents_padding = {"padx": (THIN_PAD,0), "pady": (MED_PAD,2)} 
 
-""" Main window & frame """
+""" Main window & menu bar """
 root = RootWindow()
-
-menuBar = Menu(root)
-fileMenu = Menu(menuBar, tearoff=0)
-menuBar.add_cascade(menu=fileMenu, label="File")
-fileMenu.add_command(label="Open data folder", command=show_data_folder)
-root.config(menu=menuBar)
 
 topFrame = ttk.Frame(root, padding=(THIN_PAD,0,THIN_PAD,THIN_PAD))
 topFrame.grid(column=0, row=0, padx=WIDE_PAD, pady=(WIDE_PAD,0), sticky=N+W+E)
@@ -258,19 +285,14 @@ topFrame.columnconfigure(3, weight=3)
 
 ttk.Label(topFrame, text="Mode:").grid(column=0, row=0, sticky=W)
 modeVar = StringVar(value=key_from_value(modes, params["mode"])[0])
-modeSelector = ttk.Combobox(
+modeSelector = ttk.OptionMenu(
 		topFrame,
-		state="readonly",
-		values=list(modes.keys()),
-		textvariable=modeVar,
-		width=10
+		modeVar,
+		key_from_value(modes, params["mode"])[0],
+		*tuple(modes.keys()),
+		command=lambda _: update_setting(["mode"], [modes[modeVar.get()]])
 		)
 modeSelector.grid(column=1, row=0, padx=WIDE_PAD, sticky=W)
-
-# Find more elegant way to do this
-ttk.Button(topFrame, text="Update", command=lambda : update_setting(["mode"], [modes[modeVar.get()]])).grid(column=2, row=0, sticky=W)
-
-ttk.Label(topFrame, text="v1.00", anchor=E).grid(column=3, row=0, sticky=E)
 
 """ Tabs """
 tabsFrame = ttk.Frame(root, padding=(THIN_PAD,0,THIN_PAD,THIN_PAD))
@@ -364,18 +386,19 @@ rangeSlider = Slider(runTab,
 				height=40,
 				min_val=0,
 				max_val=100,
-				init_lis=[0, 80],
+				init_lis=params["histBounds"],
 				step_size=1,
 				show_value=True,
 				removable=False,
 				addable=False
 				)
+print(rangeSlider.getValues())
 rangeSlider.grid(column=3, row=2, padx=0, pady=0, sticky=N)
 ttk.Label(runTab, text="Bins:", anchor=CENTER).grid(column=4, row=2, padx=(THIN_PAD,0), pady=(THIN_PAD,0), sticky=N)
-histBinsVar = IntVar(value=100)
+histBinsVar = IntVar(value=params["histBins"])
 binsSpbx = Spinbox(runTab, from_=50, to=200, textvariable=histBinsVar, width=5, increment=10)
 binsSpbx.grid(column=5, row=2, padx=(THIN_PAD,0), pady=(THIN_PAD,0), sticky=N+W)
-histogram = Histogram(parent=histogramLbf, xlim=[0, 80], ylim=[0, 250], bins=histBinsVar.get())
+histogram = Histogram(parent=histogramLbf, xlim=rangeSlider.getValues(), ylim=[0, 250], bins=histBinsVar.get())
 histogram.draw()
 applyButton = Button(runTab, text="Apply", width=3, height=1, command=histogram.draw)
 applyButton.grid(column=6, row=2, padx=(THIN_PAD,0), pady=(THIN_PAD,0), sticky=E+N)
@@ -393,17 +416,56 @@ settings = {}
 triggerSettings = ttk.Labelframe(settingsTab, text="Trigger")
 triggerSettings.grid(column=0, row=0, rowspan=2, **asym_left_padding, sticky=W+E+N)
 
-# def return_target(list_: tuple[int]) -> str:
-# 	for flag, ch in zip(list_, channelIDs):
-# 		if flag == 1:
-# 			return ch
+ttk.Label(triggerSettings, text="Target(s)").grid(column=0, row=0, columnspan=2, **lbf_contents_padding, sticky=W+N) 
+settings["target"] = StringVar(value="")
+targetFlags = [StringVar(value="") for _ in range(4)]
+targetAChbx = Checkbutton(
+		triggerSettings,
+		variable=targetFlags[0],
+		text="A",
+		onvalue="A",
+		offvalue="",
+		command=lambda : target_selection(targetFlags, settings["target"])
+		)
+targetBChbx = Checkbutton(
+		triggerSettings,
+		variable=targetFlags[1],
+		text="B",
+		onvalue="B",
+		offvalue="",
+		command=lambda : target_selection(targetFlags, settings["target"])
+		)
+targetCChbx = Checkbutton(
+		triggerSettings,
+		variable=targetFlags[2],
+		text="C",
+		onvalue="C",
+		offvalue="",
+		command=lambda : target_selection(targetFlags, settings["target"])
+		)
+targetDChbx = Checkbutton(
+		triggerSettings,
+		variable=targetFlags[3],
+		text="D",
+		onvalue="D",
+		offvalue="",
+		command=lambda : target_selection(targetFlags, settings["target"])
+		)
+for i, c in enumerate([targetAChbx, targetBChbx, targetCChbx, targetDChbx]):
+	c.grid(column=0 if i <= 1 else 1, row=i+1 if i <= 1 else i-1,
+		padx=lbf_contents_padding["padx"], sticky=W+N)
 
-ttk.Label(triggerSettings, text="Target").grid(column=0, row=0, **lbf_contents_padding, sticky=W+N) 
-settings["target"] = StringVar(root, params["target"])
-targetCbx = ttk.Combobox(triggerSettings, state="readonly", values=channelIDs, textvariable=settings["target"], width=7)
-targetCbx.grid(column=0, row=1, padx=lbf_contents_padding["padx"], sticky=W+N)
+# settings["target"] = StringVar(value=params["target"])
+# targetSelector = ttk.Combobox(
+# 		triggerSettings,
+# 		state="readonly",
+# 		values=channelIDs,
+# 		textvariable=settings["target"],
+# 		width=7
+# 		)
+# targetSelector.grid(column=0, row=1, padx=lbf_contents_padding["padx"], sticky=W+N)
 
-ttk.Label(triggerSettings, text="Pre-trigger samples").grid(column=0, row=2, **lbf_contents_padding, sticky=W+N) 
+ttk.Label(triggerSettings, text="Pre-trigger samples").grid(column=0, row=3, columnspan=2, **lbf_contents_padding, sticky=W+N) 
 settings["preTrigSamples"] = IntVar(value=params["preTrigSamples"])
 preTrigSpbx = Spinbox(
 		triggerSettings,
@@ -413,9 +475,9 @@ preTrigSpbx = Spinbox(
 		width=7,
 		increment=1
 		)
-preTrigSpbx.grid(column=0, row=3, padx=lbf_contents_padding["padx"], sticky=W+N)
+preTrigSpbx.grid(column=0, row=4, columnspan=2, padx=lbf_contents_padding["padx"], sticky=W+N)
 
-ttk.Label(triggerSettings, text="Post-trigger samples").grid(column=0, row=4, **lbf_contents_padding, sticky=W+N) 
+ttk.Label(triggerSettings, text="Post-trigger samples").grid(column=0, row=5, columnspan=2, **lbf_contents_padding, sticky=W+N) 
 settings["postTrigSamples"] = IntVar(value=params["postTrigSamples"])
 postTrigSpbx = Spinbox(
 		triggerSettings,
@@ -425,20 +487,20 @@ postTrigSpbx = Spinbox(
 		width=7,
 		increment=1
 		)
-postTrigSpbx.grid(column=0, row=5, padx=lbf_contents_padding["padx"], sticky=W+N)
+postTrigSpbx.grid(column=0, row=6, columnspan=2, padx=lbf_contents_padding["padx"], sticky=W+N)
 
-ttk.Label(triggerSettings, text="Timebase").grid(column=0, row=6, **lbf_contents_padding, sticky=W+N) 
+ttk.Label(triggerSettings, text="Timebase").grid(column=0, row=7, columnspan=2, **lbf_contents_padding, sticky=W+N) 
 settings["timebase"] = IntVar(value=params["timebase"])
-timebaseCbx = ttk.Combobox(
+timebaseSelector = ttk.Combobox(
 		triggerSettings,
 		state="readonly",
 		values=[0, 1, 2, 3, 4],
 		textvariable=settings["timebase"],
 		width=7
 		)
-timebaseCbx.grid(column=0, row=7, padx=lbf_contents_padding["padx"], sticky=W+N)
+timebaseSelector.grid(column=0, row=8, columnspan=2, padx=lbf_contents_padding["padx"], sticky=W+N)
 
-ttk.Label(triggerSettings, text="Threshold (mV)").grid(column=0, row=8, **lbf_contents_padding, sticky=W+N) 
+ttk.Label(triggerSettings, text="Threshold (mV)").grid(column=0, row=9, columnspan=2, **lbf_contents_padding, sticky=W+N) 
 settings["thresholdmV"] = IntVar(value=int(params["thresholdmV"]))
 thresholdSpbx = Spinbox(
 		triggerSettings,
@@ -448,9 +510,9 @@ thresholdSpbx = Spinbox(
 		width=7,
 		increment=1
 		)
-thresholdSpbx.grid(column=0, row=9, padx=lbf_contents_padding["padx"], sticky=W+N)
+thresholdSpbx.grid(column=0, row=10, columnspan=2, padx=lbf_contents_padding["padx"], sticky=W+N)
 
-ttk.Label(triggerSettings, text="Auto trigger (ms)").grid(column=0, row=10, **lbf_contents_padding, sticky=W+N) 
+ttk.Label(triggerSettings, text="Auto trigger (ms)").grid(column=0, row=11, columnspan=2, **lbf_contents_padding, sticky=W+N) 
 settings["autoTrigms"] = IntVar(value=params["autoTrigms"])
 autoTrigSpbx = Spinbox(
 		triggerSettings,
@@ -460,9 +522,9 @@ autoTrigSpbx = Spinbox(
 		width=7,
 		increment=100
 		)
-autoTrigSpbx.grid(column=0, row=11, padx=lbf_contents_padding["padx"], sticky=W+N)
+autoTrigSpbx.grid(column=0, row=12, columnspan=2, padx=lbf_contents_padding["padx"], sticky=W+N)
 
-ttk.Label(triggerSettings, text="Trigger delay (s)").grid(column=0, row=12, **lbf_contents_padding, sticky=W+N) 
+ttk.Label(triggerSettings, text="Trigger delay (s)").grid(column=0, row=13, columnspan=2, **lbf_contents_padding, sticky=W+N) 
 settings["delaySeconds"] = IntVar(value=params["delaySeconds"])
 delaySpbx = Spinbox(
 		triggerSettings,
@@ -472,7 +534,7 @@ delaySpbx = Spinbox(
 		width=7,
 		increment=1
 		)
-delaySpbx.grid(column=0, row=13, padx=lbf_contents_padding["padx"], sticky=W+N)
+delaySpbx.grid(column=0, row=14, columnspan=2, padx=lbf_contents_padding["padx"], sticky=W+N)
 
 """ Channels settings """
 chASettings = ChannelSettings(settingsTab, ch_id="A", column=1)
@@ -483,5 +545,5 @@ chDSettings = ChannelSettings(settingsTab, ch_id="D", column=4)
 applySettingsBtn = ttk.Button(settingsTab, text="Apply", command=lambda : apply_changes(settings))
 applySettingsBtn.grid(column=4, row=1, padx=0, pady=0, ipadx=THIN_PAD, ipady=THIN_PAD, sticky=E)
 
-
+root.center()
 root.mainloop()
