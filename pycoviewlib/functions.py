@@ -3,6 +3,7 @@ from pycoviewlib.constants import maxADC
 from ctypes import c_int16, Array
 import numpy as np
 from datetime import datetime as dt
+from typing import Union
 
 def mV2adc(thresh: float, offset: float, range_: int) -> int:
 	""" Convert ADC counts to millivolts """
@@ -125,8 +126,21 @@ def print_status(status: dict) -> None:
 	else:
 		print("No status to show.")
 
-def key_from_value(dictionary: dict, value: int) -> list[str]:
-	return [k for k, v in dictionary.items() if v == value]
+def key_from_value(
+		dictionary: dict,
+		value: Union[int,str]
+		) -> Union[list,str]:
+	try:	
+		if isinstance(value, int):
+			keys = [k for k, v in dictionary.items() if value in v]
+		else:
+			keys = [k for k, v in dictionary.items() if v == value]
+	except IndexError:
+		return ""
+	if len(keys) == 1:
+		return keys[0]
+	else:
+		return keys
 
 def _isfloat(value: str) -> bool:
 	try:
