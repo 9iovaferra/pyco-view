@@ -3,8 +3,10 @@ from ctypes import c_int16, c_uint16, c_int32, c_float, Array, byref
 import numpy as np
 from picosdk.ps6000 import ps6000 as ps
 from pycoviewlib.functions import *
+from pycoviewlib.constants import *
 import matplotlib.pyplot as plt
 from picosdk.functions import adc2mV, assert_pico_ok
+from threading import Thread
 from datetime import datetime
 import sys
 from pathlib import Path
@@ -15,6 +17,16 @@ from time import time as get_time
 # Delay error simulation
 from fitter import Fitter, get_common_distributions, get_distributions
 from statistics import fmean
+
+class Manager():
+	def __init__(self):
+		self.keystroke = "q"
+		self.continue_ = True
+	
+	def listen(self):
+		event = input("")
+		if event == self.keystroke:
+			self.continue_ = False
 
 def plot_data(
 		bufferChAmV: Array[c_int16],
@@ -168,21 +180,15 @@ def make_histogram(data: list) -> None:
 	plt.ylabel("Counts")
 	plt.show()
 
-def log(loghandle: str, entry: str, time=False) -> None:
-	with open(f"./Data/{loghandle}", "a") as logfile:
-		if time:
-			logfile.write(f"[{datetime.now().strftime('%H:%M:%S')}] {entry}\n")
-		else:
-			logfile.write(f"           {entry}\n")
-
 
 def main():
-	runtimeOptions: dict = parse_args(sys.argv)
+	params: dict = parse_config()
+	# print_status(params)
 
-	timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+	timestamp: str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 	
 	""" Creating loghandle if required """
-	if runtimeOptions["log"]:
+	if params["log"] == 1:
 		loghandle: str = f"mntm_log_{timestamp}.txt"
 	
 	""" Creating data folder if not already present """
@@ -191,14 +197,14 @@ def main():
 		dataPath.mkdir(exist_ok=True)
 	except PermissionError:
 		print("Permission Error: cannot write to this location.")
-		if runtimeOptions["log"]:
+		if params["log"] == 1:
 			log(loghandle,
 	   			f"==> (!) Permission Error: cannot write to {str(dataPath)}.",
 	   			time=True)
 		sys.exit(1)
 	
 	""" Creating data output file """	
-	datahandle: str = f"./Data/mntm_data_{timestamp}.{runtimeOptions['dformat']}"
+	datahandle: str = f"./Data/mntm_data_{timestamp}.{params['dformat']}"
 	with open(datahandle, "a") as out:
 		out.write("cap\t\tdeltaT (ns)\n")
 	
@@ -208,151 +214,92 @@ def main():
 	chandle = c_int16()
 	status = {}
 
-	chInputRanges = [
-			10, 20, 50, 100, 200, 500, 1000, 2000,
-			5000, 10000, 20000, 50000, 100000, 200000
-			]
-	delaySeconds = 0
-	chRange = 5
-	analogOffset = 0.45
-	thresholdADC = 10000
-	autoTrigms = 10000
-	preTrigSamples = 70
-	postTrigSamples = 150
-	maxSamples = preTrigSamples + postTrigSamples
-	timebase = 2
-	terminalResist = 50
+	delaySeconds = params["delaySeconds"]
+	chRange = params[f"ch{params['target'][0]}range"]
+	analogOffset = params[f"ch{params['target'][0]}analogOffset"]
+	nTargets = len(params["target"])
+	thresholdADC = mV2adc(
+			params["thresholdmV"],
+			analogOffset,
+			chInputRanges[chRange]
+			)
+	autoTrigms = params["autoTrigms"]
+	preTrigSamples = params["preTrigSamples"]
+	postTrigSamples = params["postTrigSamples"]
+	maxSamples = params["maxSamples"]
+	timebase = params["timebase"]
+	coupling = couplings[params[f"ch{params['target'][0]}coupling"]][1]
 
 	""" Logging runtime parameters """
-	if runtimeOptions["log"]:
+	if params["log"] == 1:
 		log(loghandle, "==> Running acquisition with parameters:", time=True)
-		params = dict(zip(
-			["delaySeconds", "chRangemV", "analogOffset", "thresholdADC",
-			"autoTrigms", "preTrigSamples", "postTrigSamples", "maxSamples",
-			"timebase", "terminalResist"],
-			[0, 500, 0.45, 10000, 10000, 50, 250, maxSamples, 1, 5, 0]
-			))
-		colWidth = max([len(k) for k in params.keys()])
+		col_width = max([len(k) for k in params.keys()])
 		for key, value in params.items():
-			log(loghandle, f"{key: <{colWidth}} {value:}")
+			log(loghandle, f"{key: <{col_width}} {value:}")
 
 	status["openUnit"] = ps.ps6000OpenUnit(byref(chandle), None)
 	assert_pico_ok(status["openUnit"])
 
-	""" Setting up channel A, B, C and D.
-	handle		chandle
-	channel		ChA=0, ChB=1, ChC=2, ChD=3
-	enabled		1
-	coupling	DC=2 (50ohm)
-	range		500mV=5
-	offset		450mV (analogOffset)
-	bandwidth	Full=0
-	"""
-	status["setChA"] = ps.ps6000SetChannel(chandle, 0, 1, 2, chRange, analogOffset, 0)
-	assert_pico_ok(status["setChA"])
-	status["setChB"] = ps.ps6000SetChannel(chandle, 1, 1, 2, chRange, analogOffset, 0)
-	assert_pico_ok(status["setChB"])
-	status["setChC"] = ps.ps6000SetChannel(chandle, 2, 1, 2, chRange, analogOffset, 0)
-	assert_pico_ok(status["setChC"])
-	status["setChD"] = ps.ps6000SetChannel(chandle, 3, 1, 2, chRange, analogOffset, 0)
-	assert_pico_ok(status["setChD"])
+	""" Setting up channels according to `params`
+	ps.ps6000SetChannel(
+		handle:		chandle
+		id:			(A=0, B=1, C=2, D=4)
+		enabled:	(yes=1, no=0)
+		coupling:	(AC1Mohm=0, DC1Mohm=1, DC50ohm=2)
+		range:		see chInputRanges in pycoviewlib/constants.py
+		offset:		analog offset (value in volts)
+		bandwidth:	(FULL=0, 20MHz=1, 25MHz=2)
+	) """
+	for id_, name in enumerate(channelIDs):
+		status[f"setCh{name}"] = ps.ps6000SetChannel(
+				chandle,
+				id_,
+				params[f"ch{name}enabled"],
+				params[f"ch{name}coupling"],
+				params[f"ch{name}range"],
+				params[f"ch{name}analogOffset"],
+				params["ch{name}bandwidth"]
+				)
+		assert_pico_ok(status["setCh{name}"])
 	
-	""" Setting up trigger on channel A and B
-	conditions = TRUE for A and B, DONT_CARE otherwise
-		(i.e. both must be triggered at the same time)
-	nTrigConditions = 2
-	channel directions = FALLING (both)
-	threshold = 10000 ADC counts ~=-300mV (both)
-	hysteresis = 0
-		(distance by which signal must fall above/below the
-		lower/upper threshold in order to re-arm the trigger)
-	auto Trigger = 10000ms (both)
-	delay = 0s (both)
-	"""
-	if runtimeOptions["trigs"] == 2:
-		triggerConditions = ps.PS6000_TRIGGER_CONDITIONS(
-				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_TRUE"],
-				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_TRUE"],
-				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_DONT_CARE"],
-				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_DONT_CARE"],
-				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_DONT_CARE"],
-				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_DONT_CARE"],
-				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_DONT_CARE"]
-				)
-	else:
-		triggerConditions = ps.PS6000_TRIGGER_CONDITIONS(
-				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_TRUE"],
-				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_TRUE"],
-				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_TRUE"],
-				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_TRUE"],
-				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_DONT_CARE"],
-				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_DONT_CARE"],
-				ps.PS6000_TRIGGER_STATE["PS6000_CONDITION_DONT_CARE"]
-				)
+	""" Setting up advanced trigger on target channels.
+	ps.ps6000SetTriggerChannelConditions(
+		handle:			chandle
+		conditions:		TRUE for target channels, DONT_CARE otherwise
+		nConditions:	number of ps.PS6000_TRIGGER_CONDITIONS
+	)
+	ps.TRIGGER_CHANNEL_PROPERTIES(
+		threshold:			value in ADC counts
+		hysteresisUpper:	0
+		thresholdUpper:		0
+		hysteresisLower:	0
+		channel:			(A=0, B=1, C=2, D=4)
+		threshold mode:		(0=LEVEL, 1=WINDOW)
+	)
+	HYSTERESIS: distance by which signal must fall above/below the
+		lower/upper threshold in order to re-arm the trigger.
+	ps.ps6000SetTriggerChannelProperties(
+		handle:		chandle
+		properties:	channelProperties
+		auxEnable:	(yes=1, no=0)
+		wait for:	value in milliseconds
+	) """
+	conditions = [PS6000_CONDITION_TRUE if id_ in target else \
+		PS6000_CONDITION_DONT_CARE for id_ in channelIDs] \
+		+ [PS6000_CONDITION_DONT_CARE] * 3
+	triggerConditions = ps.PS6000_TRIGGER_CONDITIONS(*conditions)
 	nTrigConditions = 1
 	status["setTriggerChannelConditions"] = ps.ps6000SetTriggerChannelConditions(
 			chandle, byref(triggerConditions), nTrigConditions
 			)
 	assert_pico_ok(status["setTriggerChannelConditions"])
 
-	if runtimeOptions["trigs"] == 2:
-		Properties = ps.PS6000_TRIGGER_CHANNEL_PROPERTIES * 2
-		channelProperties = Properties(
-				ps.PS6000_TRIGGER_CHANNEL_PROPERTIES(
-					thresholdADC,
-					0,
-					0,
-					0,
-					ps.PS6000_CHANNEL["PS6000_CHANNEL_A"],
-					ps.PS6000_THRESHOLD_MODE["PS6000_LEVEL"]
-					),
-				ps.PS6000_TRIGGER_CHANNEL_PROPERTIES(
-					thresholdADC,
-					0,
-					0,
-					0,
-					ps.PS6000_CHANNEL["PS6000_CHANNEL_B"],
-					ps.PS6000_THRESHOLD_MODE["PS6000_LEVEL"]
-					)
-				)
-		nChannelProperties = 2
-	else:
-		Properties = ps.PS6000_TRIGGER_CHANNEL_PROPERTIES * 4
-		channelProperties = Properties(
-				ps.PS6000_TRIGGER_CHANNEL_PROPERTIES(
-					thresholdADC,
-					0,
-					0,
-					0,
-					ps.PS6000_CHANNEL["PS6000_CHANNEL_A"],
-					ps.PS6000_THRESHOLD_MODE["PS6000_LEVEL"]
-					),
-				ps.PS6000_TRIGGER_CHANNEL_PROPERTIES(
-					thresholdADC,
-					0,
-					0,
-					0,
-					ps.PS6000_CHANNEL["PS6000_CHANNEL_B"],
-					ps.PS6000_THRESHOLD_MODE["PS6000_LEVEL"]
-					),
-				ps.PS6000_TRIGGER_CHANNEL_PROPERTIES(
-					thresholdADC,
-					0,
-					0,
-					0,
-					ps.PS6000_CHANNEL["PS6000_CHANNEL_C"],
-					ps.PS6000_THRESHOLD_MODE["PS6000_LEVEL"]
-					),
-				ps.PS6000_TRIGGER_CHANNEL_PROPERTIES(
-					thresholdADC,
-					0,
-					0,
-					0,
-					ps.PS6000_CHANNEL["PS6000_CHANNEL_D"],
-					ps.PS6000_THRESHOLD_MODE["PS6000_LEVEL"]
-					)
-				)
-		nChannelProperties = 4
+	PropertiesArray = ps.PS6000_TRIGGER_CHANNEL_PROPERTIES * nTargets
+	properties = [ps.PS6000_TRIGGER_CHANNEL_PROPERTIES(
+			thresholdADC, 0, 0, 0, channelIDs.index(t), 0
+		) for t in params["target"]]
+	channelProperties = PropertiesArray(*properties)
+	nChannelProperties = len(properties)
 	status["setTriggerChProperties"] = ps.ps6000SetTriggerChannelProperties(
 			chandle, byref(channelProperties), nChannelProperties, 0, autoTrigms
 			)
@@ -361,35 +308,21 @@ def main():
 	status["setTriggerDelay"] = ps.ps6000SetTriggerDelay(chandle, delaySeconds)
 	assert_pico_ok(status["setTriggerDelay"])
 
-	if runtimeOptions["trigs"] == 2:
-		status["setTriggerChannelDirections"] = ps.ps6000SetTriggerChannelDirections(
-				chandle, 
-				ps.PS6000_THRESHOLD_DIRECTION["PS6000_BELOW"],
-				ps.PS6000_THRESHOLD_DIRECTION["PS6000_BELOW"],
-				ps.PS6000_THRESHOLD_DIRECTION["PS6000_NONE"],
-				ps.PS6000_THRESHOLD_DIRECTION["PS6000_NONE"], 
-				ps.PS6000_THRESHOLD_DIRECTION["PS6000_NONE"],
-				ps.PS6000_THRESHOLD_DIRECTION["PS6000_NONE"]
-				)
-	else:
-		status["setTriggerChannelDirections"] = ps.ps6000SetTriggerChannelDirections(
-				chandle, 
-				ps.PS6000_THRESHOLD_DIRECTION["PS6000_BELOW"],
-				ps.PS6000_THRESHOLD_DIRECTION["PS6000_BELOW"],
-				ps.PS6000_THRESHOLD_DIRECTION["PS6000_BELOW"],
-				ps.PS6000_THRESHOLD_DIRECTION["PS6000_BELOW"],
-				ps.PS6000_THRESHOLD_DIRECTION["PS6000_NONE"],
-				ps.PS6000_THRESHOLD_DIRECTION["PS6000_NONE"]
-				)
+	triggerDirections = [PS6000_BELOW if id_ in target else \
+		PS6000_NONE for id_ in channelIDs] + [PS6000_NONE] * 2
+	status["setTriggerChannelDirections"] = ps.ps6000SetTriggerChannelDirections(
+			chandle, *triggerDirections
+			)
 	assert_pico_ok(status["setTriggerChannelDirections"])
 	
-	""" Get timebase info & number of pre/post trigger samples to be collected
-	noSamples = maxSamples
-	pointer to timeIntervalNanoseconds = byref(timeIntervalns)
-	oversample = 1
-	pointer to maxSamples = byref(returnedMaxSamples)
-	segment index = 0
-	timebase = 1 = 400ps
+	""" Get timebase info & pre/post trigger samples to be collected
+	handle:				chandle
+	timebase:			0=200ps, 1=400ps, 2=800ps, ...
+	noSamples:			maxSamples
+	intervalns:			timeIntervalns
+	oversample:			1
+	returnedMaxSamples: as the name implies
+	segmentIndex:		0
 	"""
 	timeIntervalns = c_float()
 	returnedMaxSamples = c_int32()
@@ -403,8 +336,8 @@ def main():
 	overflow = c_int16()
 	cmaxSamples = c_int32(maxSamples)
 
-	""" Maximum ADC count value """
-	maxADC = c_int16(32512)
+	""" Maximum ADC count value (see `constants.py`) """
+	cmaxADC = c_int16(maxADC)
 
 	""" Execution time benchmarking (see below) """
 	benchmark = [0.0]
@@ -415,9 +348,17 @@ def main():
 		plt.ion()
 		data = []
 
-	for icap in range(runtimeOptions["captures"]):
+	""" Thread manager waiting for Stop command """
+	manager = Manager()
+	assistant = Thread(target=manager.listen)
+	assistant.start()
+
+	""" Capture counter """
+	capcount = 1
+
+	while manager.continue_:
 		""" Logging capture """
-		if runtimeOptions["log"]:
+		if params["log"] == 1:
 			log(loghandle, f"==> Beginning capture no. {icap + 1}", time=True)
 		
 		""" Run block capture
@@ -454,7 +395,7 @@ def main():
 		bufferDMax = (c_int16 * maxSamples)()
 		bufferDMin = (c_int16 * maxSamples)()
 
-		""" Set data buffers location for data collection from all channels.
+		""" Set data buffers location for data collection.
 		sources = ChA, ChB, ChC, ChD = 0, 1, 2, 3
 		pointer to buffers max = byref(bufferXMax)
 		pointer to buffers min = byref(bufferXMin)
@@ -494,13 +435,13 @@ def main():
 		assert_pico_ok(status["getValues"])
 
 		""" Convert ADC counts data to mV """
-		bufferChAmV = adc2mV(bufferAMax, chRange, maxADC)
-		bufferChBmV = adc2mV(bufferBMax, chRange, maxADC)
-		bufferChCmV = adc2mV(bufferCMax, chRange, maxADC)
-		bufferChDmV = adc2mV(bufferDMax, chRange, maxADC)
+		bufferChAmV = adc2mV(bufferAMax, chRange, cmaxADC)
+		bufferChBmV = adc2mV(bufferBMax, chRange, cmaxADC)
+		bufferChCmV = adc2mV(bufferCMax, chRange, cmaxADC)
+		bufferChDmV = adc2mV(bufferDMax, chRange, cmaxADC)
 
 		""" Removing the analog offset from data points """
-		thresholdmV = (thresholdADC * chInputRanges[chRange]) / maxADC.value - (analogOffset * 1000)
+		thresholdmV = (thresholdADC * chInputRanges[chRange]) / cmaxADC.value - (analogOffset * 1000)
 		for i in range(maxSamples):
 			bufferChAmV[i] -= (analogOffset * 1000)
 			bufferChBmV[i] -= (analogOffset * 1000)
@@ -527,7 +468,7 @@ def main():
 				bufferChDmV, time, thresholdmV, maxSamples, timeIntervalns.value
 				)
 		""" Logging threshold hits """
-		if runtimeOptions["log"]:
+		if params["log"] == 1:
 			log(loghandle,
 				f"gate A on: {gate['chA']['open']['mV']:.2f}mV, {gate['chA']['open']['ns']:.2f}ns @ {gate['chA']['open']['index']}",)
 			log(loghandle,
@@ -554,7 +495,7 @@ def main():
 		""" Print data to file & plot if requested """
 		with open(datahandle, "a") as out:
 			out.write(f"{icap + 1}\t\t{deltaT:.9f}\n")
-		if runtimeOptions["plot"]:
+		if params["plot"] == 1:
 			""" Create time data """
 			time = np.linspace(
 					0, (cmaxSamples.value - 1) * timeIntervalns.value, cmaxSamples.value, dtype="float32"
@@ -597,28 +538,26 @@ def main():
 
 		""" Checking if everything is fine """
 		if not 0 in status.values():
-			""" Logging error(s) """
-			if runtimeOptions["log"]:
+			manager.continue_ = False
+			if params["log"] == 1:
 				log(loghandle, "==> Something went wrong! PicoScope status:", time=True)
-				colWidth = max([len(k) for k in status.keys()])
+				col_width = max([len(k) for k in status.keys()])
 				for key, value in status.items():
-					log(loghandle, f"{key: <{colWidth}} {value:}")
-			""" Stop acquisition """
-			status["stop"] = ps.ps6000Stop(chandle)
-			assert_pico_ok(status["stop"])
-			sys.exit(1)
+					log(loghandle, f"{key: <{col_width}} {value:}")
 
-	""" Stop acquisition """
+		capcount += 1
+
+	assistant.join()
+
+	""" Stop acquisition & close unit """
 	status["stop"] = ps.ps6000Stop(chandle)
 	assert_pico_ok(status["stop"])
-
-	""" Close unit & disconnect the scope """
 	ps.ps6000CloseUnit(chandle)
 
-	""" Post-acquisition histogram """
-	if not runtimeOptions["livehist"]:
-		dataSim = delay_sim_from_file(datahandle)
-		make_histogram(dataSim)
+	# """ Post-acquisition histogram """
+	# if not runtimeOptions["livehist"]:
+	# 	dataSim = delay_sim_from_file(datahandle)
+	# 	make_histogram(dataSim)
 	
 	""" Execution time benchmarking """
 	avgTime = 0.0
@@ -630,14 +569,14 @@ def main():
 	print(f"Event resolution: {1/avgTime:.1f} Hz")
 
 	""" Logging exit status & data location """
-	if runtimeOptions["log"]:
+	if params["log"] == 1:
 		log(loghandle,
 			"==> Job finished without errors. Data and/or plots saved to:", time=True)
 		log(loghandle, f"{str(dataPath)}")
 		log(loghandle, "==> PicoScope exit status:", time=True)
-		colWidth = max([len(k) for k in status.keys()])
+		col_width = max([len(k) for k in status.keys()])
 		for key, value in status.items():
-			log(loghandle, f"{key: <{colWidth}} {value:}")
+			log(loghandle, f"{key: <{col_width}} {value:}")
 
 
 if __name__ == "__main__":

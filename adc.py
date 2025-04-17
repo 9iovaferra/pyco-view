@@ -136,14 +136,14 @@ def main():
 	thresholdADC = mV2adc(
 			params["thresholdmV"],
 			analogOffset,
-			chInputRanges[params[f"ch{params['target']}range"]]
+			chInputRanges[chRange]
 			)
 	autoTrigms = params["autoTrigms"]
 	preTrigSamples = params["preTrigSamples"]
 	postTrigSamples = params["postTrigSamples"]
-	maxSamples = preTrigSamples + postTrigSamples
+	maxSamples = params["maxSamples"]
 	timebase = params["timebase"]
-	coupling = params[f"ch{params['target']}coupling"]
+	coupling = couplings[params[f"ch{params['target']}coupling"]][1]
 	
 	""" Logging runtime parameters """
 	if params["log"] == 1:
@@ -155,7 +155,7 @@ def main():
 	status["openUnit"] = ps.ps6000OpenUnit(byref(chandle), None)
 	assert_pico_ok(status["openUnit"])
 
-	""" Setting up two channels, others turned off
+	""" Setting up channels according to `params`
 	ps.ps6000SetChannel(
 		handle:		chandle
 		id:			(A=0, B=1, C=2, D=4)
@@ -165,38 +165,40 @@ def main():
 		offset:		analog offset (value in volts)
 		bandwidth:	(FULL=0, 20MHz=1, 25MHz=2)
 	) """
-	# automate this process so that any 2 channels can be used
-	status["setChA"] = ps.ps6000SetChannel(
-			chandle, 0, params["chAenabled"], 2, chRange, analogOffset, params["chAbandwidth"]
-			)
-	assert_pico_ok(status["setChA"])
-	status["setChB"] = ps.ps6000SetChannel(
-			chandle, 1, params["chBenabled"], 2, chRange, 0, 0
-			)
-	assert_pico_ok(status["setChB"])
-	status["setChC"] = ps.ps6000SetChannel(
-			chandle, 2, params["chCenabled"], 2, chRange, analogOffset, params["chCbandwidth"]
-			)
-	assert_pico_ok(status["setChC"])
-	status["setChD"] = ps.ps6000SetChannel(
-			chandle, 3, params["chDenabled"], 2, chRange, 0, 0
-			)
-	assert_pico_ok(status["setChD"])
+	for id_, name in enumerate(channelIDs):
+		status[f"setCh{name}"] = ps.ps6000SetChannel(
+				chandle,
+				id_,
+				params[f"ch{name}enabled"],
+				params[f"ch{name}coupling"],
+				params[f"ch{name}range"],
+				params[f"ch{name}analogOffset"],
+				params["ch{name}bandwidth"]
+				)
+		assert_pico_ok(status["setCh{name}"])
 
-	""" Setting up trigger on channel A
-	enabled = 1
-	source = ChA = 0
-	threshold = 10000 ADC counts ~=300mV, see thresholdmV below
-	direction = PS6000_FALLING = 3
-	delay = 0s
-	auto Trigger = 10000ms
-	"""
+	""" Setting up simple trigger on target channel
+	ps.ps6000SetSimpleTrigger(
+		handle:		chandle
+		enabled:	(yes=1, no=0)
+		source:		(A=0, B=1, C=2, D=4)
+		threshold:	value in ADC counts
+		direction:	PS6000_FALLING=3
+		delay:		value in seconds
+		wait for:	value in milliseconds
+	) """
 	status["trigger"] = ps.ps6000SetSimpleTrigger(
-			chandle, 1, 0, thresholdADC, 3, delaySeconds, autoTrigms
+			chandle,
+			1,
+			channelIDs.index(params["target"]),
+			thresholdADC,
+			3,
+			delaySeconds,
+			autoTrigms
 			)
 	assert_pico_ok(status["trigger"])
 
-	""" Get timebase info & number of pre/post trigger samples to be collected
+	""" Get timebase info & pre/post trigger samples to be collected
 	noSamples = maxSamples
 	pointer to timeIntervalNanoseconds = byref(timeIntervalns)
 	oversample = 1
@@ -352,18 +354,17 @@ def main():
 			manager.continue_ = False
 			if params["log"] == 1:
 				log(loghandle, "==> Something went wrong! PicoScope status:", time=True)
-				colWidth = max([len(k) for k in status.keys()])
+				col_width = max([len(k) for k in status.keys()])
 				for key, value in status.items():
-					log(loghandle, f"{key: <{colWidth}} {value:}")
+					log(loghandle, f"{key: <{col_width}} {value:}")
 
 		capcount +=1
 	
 	assistant.join()
 
+	""" Stop acquisition & close unit """
 	status["stop"] = ps.ps6000Stop(chandle)
 	assert_pico_ok(status["stop"])
-
-	""" Close unit & disconnect the scope """
 	ps.ps6000CloseUnit(chandle)
 
 	""" Logging exit status & data location """

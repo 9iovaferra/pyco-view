@@ -199,7 +199,7 @@ def main():
 	status["openUnit"] = ps.ps6000OpenUnit(byref(chandle), None)
 	assert_pico_ok(status["openUnit"])
 
-	""" Setting up two channels, others turned off
+	""" Setting up channels according to `params`
 	ps.ps6000SetChannel(
 		handle:		chandle
 		id:			(A=0, B=1, C=2, D=4)
@@ -209,23 +209,17 @@ def main():
 		offset:		analog offset (value in volts)
 		bandwidth:	(FULL=0, 20MHz=1, 25MHz=2)
 	) """
-	# automate this process so that any 2 channels can be used
-	status["setChA"] = ps.ps6000SetChannel(
-			chandle, 0, params["chAenabled"], 1, params["chARange"], params["chAanalogOffset"], 0
-			)
-	assert_pico_ok(status["setChA"])
-	status["setChB"] = ps.ps6000SetChannel(
-			chandle, 1, params["chBenabled"], 1, params["chBRange"], 0, 0
-			)
-	assert_pico_ok(status["setChB"])
-	status["setChC"] = ps.ps6000SetChannel(
-			chandle, 2, params["chCenabled"], 1, params["chCRange"], params["chCanalogOffset"], 0
-			)
-	assert_pico_ok(status["setChC"])
-	status["setChD"] = ps.ps6000SetChannel(
-			chandle, 3, params["chDenabled"], 1, params["chDRange"], 0, 0
-			)
-	assert_pico_ok(status["setChD"])
+	for id_, name in enumerate(channelIDs):
+		status[f"setCh{name}"] = ps.ps6000SetChannel(
+				chandle,
+				id_,
+				params[f"ch{name}enabled"],
+				params[f"ch{name}coupling"],
+				params[f"ch{name}range"],
+				params[f"ch{name}analogOffset"],
+				params["ch{name}bandwidth"]
+				)
+		assert_pico_ok(status["setCh{name}"])
 	
 	""" Setting up trigger on channel A and C
 	conditions = TRUE for A and C, DONT_CARE otherwise
