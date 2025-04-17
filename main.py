@@ -99,7 +99,7 @@ class ChannelSettings():
 		self.chRange.grid(column=0, row=2, padx=THIN_PAD, sticky=W+N)
 
 		ttk.Label(self.chFrame, text="Coupling").grid(column=0, row=3, **lbf_contents_padding, sticky=W+N) 
-		settings[f"ch{ch_id}coupling"] = StringVar(value=key_from_value(couplings, params[f"ch{ch_id}coupling"])[0])
+		settings[f"ch{ch_id}coupling"] = StringVar(value=key_from_value(couplings, params[f"ch{ch_id}coupling"]))
 		self.coupling = ttk.Combobox(
 				self.chFrame,
 				state="readonly",
@@ -146,6 +146,8 @@ def target_selection(flags: list[StringVar], targets: StringVar) -> None:
 	targets.set(flags[0].get() + flags[1].get() + flags[2].get() + flags[3].get())
 
 def apply_changes(settings: dict) -> None:
+	""" Compares `settings` against `params`,
+	sends updated values to `update_setting` """
 	keys = []
 	values = []
 	for k, v in settings.items():
@@ -154,7 +156,7 @@ def apply_changes(settings: dict) -> None:
 		elif "range" in k:
 			new_value = chInputRanges.index(v.get())
 		elif "coupling" in k:
-			new_value = couplings[v.get()]
+			new_value = couplings[v.get()][0]
 		elif "analogOffset" in k:
 			new_value = v.get() / 1000
 		elif "bandwidth" in k:
