@@ -131,10 +131,9 @@ def key_from_value(
 		value: Union[int,str]
 		) -> Union[list,str]:
 	try:	
-		if isinstance(value, int):
-			keys = [k for k, v in dictionary.items() if value in v]
-		else:
-			keys = [k for k, v in dictionary.items() if v == value]
+		keys = [k for k, v in dictionary.items() if value in v]
+	except TypeError:
+		keys = [k for k, v in dictionary.items() if v == value]
 	except IndexError:
 		return ""
 	if len(keys) == 1:
