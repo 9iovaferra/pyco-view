@@ -60,7 +60,7 @@ class RootWindow(Tk):
 
 	def open_about_window(self) -> None:
 		about = Toplevel()
-		about.after(0, about.hide())
+		about.after(0, self.hide())
 		about.title("About")
 		title = ttk.Label(about, text="PycoView", font=18, anchor=CENTER)
 		title.grid(column=0, row=0, **uniform_padding, sticky=N+W+E)
@@ -72,65 +72,73 @@ class RootWindow(Tk):
 		self.center(target=about)
 
 class ChannelSettings():
-	def __init__(self, parent, ch_id: str, column: int):
-		self.chFrame = ttk.Labelframe(parent, text=f"Channel {ch_id}")
+	def __init__(self, parent, id_: str, column: int):
+		self.chFrame = ttk.Labelframe(parent, text=f"Channel {id_}")
 		self.chFrame.grid(column=column, row=0, **asym_left_padding, sticky=W+E+N)
 
-		settings[f"ch{ch_id}enabled"] = IntVar(value=params[f"ch{ch_id}enabled"])
+		settings[f"ch{id_}enabled"] = IntVar(value=params[f"ch{id_}enabled"])
 		self.enabled = Checkbutton(
 				self.chFrame,
-				variable=settings[f"ch{ch_id}enabled"],
+				variable=settings[f"ch{id_}enabled"],
 				text="Enabled",
 				onvalue=1,
 				offvalue=0,
-				command=lambda : update_setting([f"ch{ch_id}enabled"], [settings[f"ch{ch_id}enabled"].get()])
+				command=lambda : update_setting([f"ch{id_}enabled"], [settings[f"ch{id_}enabled"].get()])
 				)
 		self.enabled.grid(column=0, row=0, pady=(THIN_PAD,0), sticky=W+N)
 
 		ttk.Label(self.chFrame, text="Range (±mV)").grid(column=0, row=1, **lbf_contents_padding, sticky=W+N) 
-		settings[f"ch{ch_id}range"] = IntVar(value=chInputRanges[params[f"ch{ch_id}range"]])
+		settings[f"ch{id_}range"] = IntVar(value=chInputRanges[params[f"ch{id_}range"]])
 		self.chRange = ttk.Combobox(
 				self.chFrame,
 				state="readonly",
 				values=chInputRanges,
-				textvariable=settings[f"ch{ch_id}range"],
+				textvariable=settings[f"ch{id_}range"],
 				width=7
 				)
 		self.chRange.grid(column=0, row=2, padx=THIN_PAD, sticky=W+N)
 
 		ttk.Label(self.chFrame, text="Coupling").grid(column=0, row=3, **lbf_contents_padding, sticky=W+N) 
-		settings[f"ch{ch_id}coupling"] = StringVar(value=key_from_value(couplings, params[f"ch{ch_id}coupling"]))
+		settings[f"ch{id_}coupling"] = StringVar(value=key_from_value(couplings, params[f"ch{id_}coupling"]))
 		self.coupling = ttk.Combobox(
 				self.chFrame,
 				state="readonly",
 				values=list(couplings.keys()),
-				textvariable=settings[f"ch{ch_id}coupling"],
+				textvariable=settings[f"ch{id_}coupling"],
 				width=7
 				)
 		self.coupling.grid(column=0, row=4, padx=THIN_PAD, sticky=W+N)
 
 		ttk.Label(self.chFrame, text="Analogue offset (mV)").grid(column=0, row=5, **lbf_contents_padding, sticky=W+N) 
-		settings[f"ch{ch_id}analogOffset"] = DoubleVar(value=params[f"ch{ch_id}analogOffset"] * 1000)
+		settings[f"ch{id_}analogOffset"] = DoubleVar(value=params[f"ch{id_}analogOffset"] * 1000)
 		self.analogOffset = Spinbox(
 				self.chFrame,
 				from_=0,
-				to=settings[f"ch{ch_id}range"].get(),
-				textvariable=settings[f"ch{ch_id}analogOffset"],
+				to=settings[f"ch{id_}range"].get(),
+				textvariable=settings[f"ch{id_}analogOffset"],
 				width=7,
 				increment=1
 				)
 		self.analogOffset.grid(column=0, row=6, padx=THIN_PAD, sticky=W+N)
 
 		ttk.Label(self.chFrame, text="Bandwidth").grid(column=0, row=7, **lbf_contents_padding, sticky=W+N) 
-		settings[f"ch{ch_id}bandwidth"] = StringVar(value=key_from_value(bandwidths, params[f"ch{ch_id}bandwidth"])[0])
+		settings[f"ch{id_}bandwidth"] = StringVar(value=key_from_value(bandwidths, params[f"ch{id_}bandwidth"]))
 		self.bandwidth = ttk.Combobox(
 				self.chFrame,
 				state="readonly",
 				values=list(bandwidths.keys()),
-				textvariable=settings[f"ch{ch_id}bandwidth"],
+				textvariable=settings[f"ch{id_}bandwidth"],
 				width=7
 				)
 		self.bandwidth.grid(column=0, row=8, padx=THIN_PAD, sticky=W+N)
+
+def refresh_run_tab(event) -> None:
+	if event.widget.tab("current")["text"] == "Run":
+		runTab.update_idletasks()
+
+def get_timebase_lbl(timebase: int) -> str:
+	interval = int(2 ** timebase / 5e-3 if timebase in range(5) else (timebase - 4) / 1.5625e-4)
+	return f"{interval} ps" if interval < 1000 else f"{round(interval / 1000, 1)} ns"
 
 def h_separator(parent, row: int, columnspan: int) -> None:
 	ttk.Separator(parent, orient='horizontal').grid(
@@ -150,6 +158,7 @@ def apply_changes(settings: dict) -> None:
 	sends updated values to `update_setting` """
 	keys = []
 	values = []
+	update = False
 	for k, v in settings.items():
 		if "mode" in k:
 			new_value = modes[v.get()]
@@ -161,12 +170,16 @@ def apply_changes(settings: dict) -> None:
 			new_value = v.get() / 1000
 		elif "bandwidth" in k:
 			new_value = bandwidths[v.get()]
+		elif "target" in k:
+			new_value = list(v.get())
 		else:
 			new_value = v.get()
 		if params[k] != new_value:
 			keys.append(k)
 			values.append(new_value)
-	update_setting(keys, values)
+			update = True
+	if update:	
+		update_setting(keys, values)
 
 def update_setting(
 		key: list[str],
@@ -257,15 +270,18 @@ class Job:
 
 
 """ Reading runtime parameters from .ini file """
-params = parse_config()
+params: dict = parse_config()
 
-offsets = []
-ranges = []
+param_offsets = []
+param_ranges = []
+param_couplings = []
 for k, v in params.items():
 	if "Offset" in k:
-		offsets.append(v)
+		param_offsets.append(v)
 	elif "range" in k:
-		ranges.append(chInputRanges[v])
+		param_ranges.append(chInputRanges[v])
+	elif "coupling" in k:
+		param_couplings.append(key_from_value(couplings, v))
 
 """ Padding presets (frame padding: 'left top right bottom') """
 THIN_PAD = 6
@@ -286,11 +302,11 @@ topFrame.grid(column=0, row=0, padx=WIDE_PAD, pady=(WIDE_PAD,0), sticky=N+W+E)
 topFrame.columnconfigure(3, weight=3)
 
 ttk.Label(topFrame, text="Mode:").grid(column=0, row=0, sticky=W)
-modeVar = StringVar(value=key_from_value(modes, params["mode"])[0])
+modeVar = StringVar(value=key_from_value(modes, params["mode"]))
 modeSelector = ttk.OptionMenu(
 		topFrame,
 		modeVar,
-		key_from_value(modes, params["mode"])[0],
+		key_from_value(modes, params["mode"]),
 		*tuple(modes.keys()),
 		command=lambda _: update_setting(["mode"], [modes[modeVar.get()]])
 		)
@@ -301,6 +317,7 @@ tabsFrame = ttk.Frame(root, padding=(THIN_PAD,0,THIN_PAD,THIN_PAD))
 tabsFrame.grid(column=0, row=1, **uniform_padding, sticky=W+E+N+S)
 tabControl = ttk.Notebook(tabsFrame)
 runTab = ttk.Frame(tabControl, padding=(0,0))
+tabControl.bind("<<NotebookTabChanged>>", refresh_run_tab)
 settingsTab = ttk.Frame(tabControl, padding=(0,0))
 tabControl.add(runTab, text="Run")
 tabControl.add(settingsTab, text="Settings")
@@ -310,70 +327,88 @@ tabControl.pack(expand=1, fill="both")
 summary = ttk.Labelframe(runTab, text="Summary")
 summary.grid(column=0, row=0, columnspan=2, **asym_left_padding, sticky=W+E+N+S)
 
-""" Summary labelframe contents """
+""" Summary labelframe contents.
+'summary_textvar' is a container of 'StringVar' or 'IntVar' objects used to update the UI
+as settings are changed. The 'refresh_run_tab' function takes care of setting the
+new values so that the UI reflects said changes. """
+summary_textvar = {
+		"range": [StringVar(value=f"±{r}") for r in param_ranges],
+		"analogOffset": [IntVar(value=int(o * 1000)) for o in param_offsets],
+		"coupling": [StringVar(value=c) for c in param_couplings],
+		"target": [StringVar(value=u"\u2713" if ch in params["target"] else u"\u2717") for ch in channelIDs],
+		"timebase": StringVar(value=get_timebase_lbl(params["timebase"])),
+		"thresholdmV": StringVar(value=f"{params['thresholdmV']:.0f} mV"),
+		"delaySeconds": StringVar(value=f"{params['delaySeconds']} s"),
+		"autoTrigms": StringVar(value=f"{params['autoTrigms']} ms"),
+		"preTrigSamples": StringVar(value=f"{params['preTrigSamples']}"),
+		"postTrigSamples": StringVar(value=f"{params['postTrigSamples']}")
+		}
+
 for i, ch, color in zip(range(4), channelIDs, ["blue", "red", "green3", "gold"]):
-	ttk.Label(summary, text=ch, background=color, foreground="white", anchor=E).grid(
+	ttk.Label(summary, text=ch, background=color, foreground="white", font="bold", anchor=E).grid(
 			column=i+1, row=0, padx=0 if i == 0 else (THIN_PAD,0), pady=(WIDE_PAD,0), sticky=W+E
 			)
-for i, entry in enumerate(["Range (±mV)", "Analog offset (mV)", "Coupling (Ω)", "Threshold (mV)"]):
+for i, entry in enumerate(["Range (mV)", "Analog offset (mV)", "Coupling", "Trigger target"]):
 	ttk.Label(summary, text=entry).grid(
 			column=0, row=i+1, padx=(THIN_PAD,0), pady=(WIDE_PAD if i == 0 else LINE_PAD,0), sticky=W
 			)
-for i, entry in enumerate(ranges):
-	ttk.Label(summary, text=entry, anchor=E).grid(
-			column=i+1, row=1, padx=0 if i == 0 else (THIN_PAD,0), pady=(LINE_PAD,0), sticky=E
+for i in range(4):
+	ttk.Label(summary, textvariable=summary_textvar["range"][i], anchor=E).grid(
+			column=i+1, row=1, padx=0 if i == 0 else (THIN_PAD,0), pady=(WIDE_PAD,0), sticky=E
 			)
-for i, entry in enumerate(offsets):
-	ttk.Label(summary, text=int(entry * 1000), anchor=E).grid(
+	ttk.Label(summary, textvariable=summary_textvar["analogOffset"][i], anchor=E).grid(
 			column=i+1, row=2, padx=0 if i == 0 else (THIN_PAD,0), pady=(LINE_PAD,0), sticky=E
 			)
-for i, entry in enumerate([params["chAcoupling"], params["chBcoupling"], params["chCcoupling"], params["chDcoupling"]]):
-	ttk.Label(summary, text=entry, anchor=E).grid(
+	ttk.Label(summary, textvariable=summary_textvar["coupling"][i], anchor=E).grid(
 			column=i+1, row=3, padx=0 if i == 0 else (THIN_PAD,0), pady=(LINE_PAD,0), sticky=E
 			)
-for i, ch in enumerate(channelIDs):
-	ttk.Label(summary, text=f"{params['thresholdmV']:.0f}" if i == channelIDs.index(params["target"]) else "None", anchor=E).grid(
+	ttk.Label(summary, textvariable=summary_textvar["target"][i], anchor=E).grid(
 			column=i+1, row=4, padx=0 if i == 0 else (THIN_PAD,0), pady=(LINE_PAD,0), sticky=E
 			)
 
 h_separator(summary, row=5, columnspan=5)
 
 ttk.Label(summary, text="Timebase").grid(column=0, row=6, padx=(THIN_PAD,0), pady=(WIDE_PAD,0), sticky=W)
-ttk.Label(summary, text=f"{timebases[params['timebase']]}", anchor=E).grid(
+ttk.Label(summary, textvariable=summary_textvar["timebase"], anchor=E).grid(
 		column=1, row=6, columnspan=4, padx=0, pady=(WIDE_PAD,0), sticky=W+E
 		)
-ttk.Label(summary, text="Trigger delay").grid(column=0, row=7, padx=(THIN_PAD,0), pady=(LINE_PAD,0), sticky=W)
-ttk.Label(summary, text=f"{params['delaySeconds']} s", anchor=E).grid(
+ttk.Label(summary, text="Threshold").grid(column=0, row=7, padx=(THIN_PAD,0), pady=(LINE_PAD,0), sticky=W)
+ttk.Label(summary, textvariable=summary_textvar["thresholdmV"], anchor=E).grid(
 		column=1, row=7, columnspan=4, padx=0, pady=(LINE_PAD,0), sticky=W+E
 		)
-ttk.Label(summary, text="Auto-trigger after").grid(column=0, row=8, padx=(THIN_PAD,0), pady=(LINE_PAD,0), sticky=W)
-ttk.Label(summary, text=f"{params['autoTrigms']} ms", anchor=E).grid(
+ttk.Label(summary, text="Trigger delay").grid(column=0, row=8, padx=(THIN_PAD,0), pady=(LINE_PAD,0), sticky=W)
+ttk.Label(summary, textvariable=summary_textvar["delaySeconds"], anchor=E).grid(
 		column=1, row=8, columnspan=4, padx=0, pady=(LINE_PAD,0), sticky=W+E
 		)
-ttk.Label(summary, text="Pre-trigger samples").grid(column=0, row=9, padx=(THIN_PAD,0), pady=(LINE_PAD,0), sticky=W)
-ttk.Label(summary, text=f"{params['preTrigSamples']}", anchor=E).grid(
+ttk.Label(summary, text="Auto-trigger after").grid(column=0, row=9, padx=(THIN_PAD,0), pady=(LINE_PAD,0), sticky=W)
+ttk.Label(summary, textvariable=summary_textvar["autoTrigms"], anchor=E).grid(
 		column=1, row=9, columnspan=4, padx=0, pady=(LINE_PAD,0), sticky=W+E
 		)
-ttk.Label(summary, text="Post-trigger samples").grid(column=0, row=10, padx=(THIN_PAD,0), pady=(LINE_PAD,0), sticky=W)
-ttk.Label(summary, text=f"{params['postTrigSamples']}", anchor=E).grid(
+ttk.Label(summary, text="Pre-trigger samples").grid(column=0, row=10, padx=(THIN_PAD,0), pady=(LINE_PAD,0), sticky=W)
+ttk.Label(summary, textvariable=summary_textvar["preTrigSamples"], anchor=E).grid(
 		column=1, row=10, columnspan=4, padx=0, pady=(LINE_PAD,0), sticky=W+E
 		)
+ttk.Label(summary, text="Post-trigger samples").grid(column=0, row=11, padx=(THIN_PAD,0), pady=(LINE_PAD,0), sticky=W)
+ttk.Label(summary, textvariable=summary_textvar["postTrigSamples"], anchor=E).grid(
+		column=1, row=11, columnspan=4, padx=0, pady=(LINE_PAD,0), sticky=W+E
+		)
 
-h_separator(summary, row=11, columnspan=5)
+h_separator(summary, row=12, columnspan=5)
 
 logFlag = IntVar(value=params["log"])
 logCheckBox = Checkbutton(
 		summary, variable=logFlag, text="Log acquisition",
 		onvalue=1, offvalue=0, command=lambda : update_setting(["log"], [logFlag.get()])
 		)
-logCheckBox.grid(column=0, row=12, columnspan=4, pady=(WIDE_PAD,0), sticky=W+S)
+logCheckBox.grid(column=0, row=13, columnspan=4, pady=(WIDE_PAD,0), sticky=W+S)
 plotFlag = IntVar(value=params["plot"])
 plotCheckBox = Checkbutton(
 		summary, variable=plotFlag, text="Export figure for each capture",
 		onvalue=1, offvalue=0, command=lambda : update_setting(["plot"], [plotFlag.get()])
 		)
-plotCheckBox.grid(column=0, row=13, columnspan=4, pady=(LINE_PAD,WIDE_PAD), sticky=W+S)
+plotCheckBox.grid(column=0, row=14, columnspan=4, pady=(LINE_PAD,WIDE_PAD), sticky=W+S)
 
+""" Start/Stop job buttons """
 acquisition = Job(root=root, applet=modes[modeVar.get()])
 startButton = ttk.Button(runTab, text="START", command=acquisition.run)
 startButton.grid(column=0, row=1, padx=(WIDE_PAD,0), pady=0, ipadx=THIN_PAD, ipady=THIN_PAD, sticky=W+E+S)
@@ -419,7 +454,7 @@ triggerSettings = ttk.Labelframe(settingsTab, text="Trigger")
 triggerSettings.grid(column=0, row=0, rowspan=2, **asym_left_padding, sticky=W+E+N)
 
 ttk.Label(triggerSettings, text="Target(s)").grid(column=0, row=0, columnspan=2, **lbf_contents_padding, sticky=W+N) 
-settings["target"] = StringVar(value="")
+settings["target"] = StringVar(value="".join(params["target"]))
 targetFlags = [StringVar(value="") for _ in range(4)]
 targetAChbx = Checkbutton(
 		triggerSettings,
@@ -454,6 +489,8 @@ targetDChbx = Checkbutton(
 		command=lambda : target_selection(targetFlags, settings["target"])
 		)
 for i, c in enumerate([targetAChbx, targetBChbx, targetCChbx, targetDChbx]):
+	if channelIDs[i] in params["target"]:
+		c.select()
 	c.grid(column=0 if i <= 1 else 1, row=i+1 if i <= 1 else i-1,
 		padx=lbf_contents_padding["padx"], sticky=W+N)
 
@@ -493,20 +530,21 @@ postTrigSpbx.grid(column=0, row=6, columnspan=2, padx=lbf_contents_padding["padx
 
 ttk.Label(triggerSettings, text="Timebase").grid(column=0, row=7, columnspan=2, **lbf_contents_padding, sticky=W+N) 
 settings["timebase"] = IntVar(value=params["timebase"])
-timebaseSelector = ttk.Combobox(
+timebaseSpbx = Spinbox(
 		triggerSettings,
-		state="readonly",
-		values=[0, 1, 2, 3, 4],
+		from_=0,
+		to=2 ** 32 - 1,
 		textvariable=settings["timebase"],
-		width=7
+		width=7,
+		increment=1
 		)
-timebaseSelector.grid(column=0, row=8, columnspan=2, padx=lbf_contents_padding["padx"], sticky=W+N)
+timebaseSpbx.grid(column=0, row=8, columnspan=2, padx=lbf_contents_padding["padx"], sticky=W+N)
 
 ttk.Label(triggerSettings, text="Threshold (mV)").grid(column=0, row=9, columnspan=2, **lbf_contents_padding, sticky=W+N) 
 settings["thresholdmV"] = IntVar(value=int(params["thresholdmV"]))
 thresholdSpbx = Spinbox(
 		triggerSettings,
-		from_=-chInputRanges[params[f"ch{params['target']}range"]],
+		from_=-chInputRanges[params[f"ch{params['target'][0]}range"]], # will need a better fix for this
 		to=0,
 		textvariable=settings["thresholdmV"],
 		width=7,
@@ -539,10 +577,10 @@ delaySpbx = Spinbox(
 delaySpbx.grid(column=0, row=14, columnspan=2, padx=lbf_contents_padding["padx"], sticky=W+N)
 
 """ Channels settings """
-chASettings = ChannelSettings(settingsTab, ch_id="A", column=1)
-chBSettings = ChannelSettings(settingsTab, ch_id="B", column=2)
-chCSettings = ChannelSettings(settingsTab, ch_id="C", column=3)
-chDSettings = ChannelSettings(settingsTab, ch_id="D", column=4)
+chASettings = ChannelSettings(settingsTab, id_="A", column=1)
+chBSettings = ChannelSettings(settingsTab, id_="B", column=2)
+chCSettings = ChannelSettings(settingsTab, id_="C", column=3)
+chDSettings = ChannelSettings(settingsTab, id_="D", column=4)
 
 applySettingsBtn = ttk.Button(settingsTab, text="Apply", command=lambda : apply_changes(settings))
 applySettingsBtn.grid(column=4, row=1, padx=0, pady=0, ipadx=THIN_PAD, ipady=THIN_PAD, sticky=E)
