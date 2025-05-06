@@ -217,9 +217,9 @@ def main():
 				params[f"ch{name}coupling"],
 				params[f"ch{name}range"],
 				params[f"ch{name}analogOffset"],
-				params["ch{name}bandwidth"]
+				params[f"ch{name}bandwidth"]
 				)
-		assert_pico_ok(status["setCh{name}"])
+		assert_pico_ok(status[f"setCh{name}"])
 	
 	""" Setting up trigger on channel A and C
 	conditions = TRUE for A and C, DONT_CARE otherwise
