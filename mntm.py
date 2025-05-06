@@ -258,9 +258,9 @@ def main():
 				params[f"ch{name}coupling"],
 				params[f"ch{name}range"],
 				params[f"ch{name}analogOffset"],
-				params["ch{name}bandwidth"]
+				params[f"ch{name}bandwidth"]
 				)
-		assert_pico_ok(status["setCh{name}"])
+		assert_pico_ok(status[f"setCh{name}"])
 	
 	""" Setting up advanced trigger on target channels.
 	ps.ps6000SetTriggerChannelConditions(
@@ -314,7 +314,7 @@ def main():
 			chandle, *triggerDirections
 			)
 	assert_pico_ok(status["setTriggerChannelDirections"])
-	
+
 	""" Get timebase info & pre/post trigger samples to be collected
 	handle:				chandle
 	timebase:			0=200ps, 1=400ps, 2=800ps, ...
