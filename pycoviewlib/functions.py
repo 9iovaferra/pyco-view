@@ -1,5 +1,6 @@
 """ Copyright (C) 2019 Pico Technology Ltd. """
 from pycoviewlib.constants import maxADC
+from dataclasses import dataclass
 from ctypes import c_int16, Array
 import numpy as np
 from datetime import datetime as dt
@@ -8,17 +9,17 @@ from typing import Union
 def mV2adc(thresh: float, offset: float, range_: int) -> int:
 	""" Convert ADC counts to millivolts """
 	thresholdADC = int((thresh + offset * 1000) / range_ * maxADC)
-	
+
 	return thresholdADC
 
 def parse_config() -> dict:
 	""" Parser for .ini file """
 	params = {}
-	with open("config.ini", "r") as ini:
+	with open('config.ini', 'r') as ini:
 		for line in ini:
-			if "[" in line or line == "\n":
+			if '[' in line or line == '\n':
 				continue
-			p = line.rstrip("\n").split(" = ")
+			p = line.rstrip('\n').split(' = ')
 			if p[1].isdigit():
 				params[p[0]] = int(p[1])
 			elif _isfloat(p[1]):
@@ -26,31 +27,34 @@ def parse_config() -> dict:
 			elif p[1].isalpha():
 				params[p[0]] = p[1]
 			else:
-				params[p[0]] = list(int(v) for v in p[1].split(","))
-	params["maxSamples"] = params["preTrigSamples"] + params["postTrigSamples"]
+				params[p[0]] = list(int(v) for v in p[1].split(','))
+	params['maxSamples'] = params['preTrigSamples'] + params['postTrigSamples']
 	# Convert target channels to list if more than one
-	if len(params["target"]) > 1:
-		params["target"] = list(params["target"])
+	if len(params['target']) > 1:
+		params['target'] = list(params['target'])
 
 	return params
 
 def parse_args(args: list) -> dict:
-	""" Parse command line arguments """
+	"""
+	Parse command line arguments.
+	(Deprecated: it was used during development)
+	"""
 	options = dict.fromkeys([
-		"captures", "plot", "log", "dformat", "trigs", "livehist"
+		'captures', 'plot', 'log', 'dformat', 'trigs', 'livehist'
 		])
 	for arg in args:
 		if arg.isdigit():
-			options["captures"] = int(arg)
+			options['captures'] = int(arg)
 			break
 		else:
-			options["captures"] = 1
-	options["plot"] = True if "plot" in args else False
-	options["log"] = True if "log" in args else False
-	options["dformat"] = "csv" if "csv" in args else "txt"
-	options["trigs"] = 4 if "4way" in args else 2
-	options["livehist"] = True if "live" in args else False
-	
+			options['captures'] = 1
+	options['plot'] = True if 'plot' in args else False
+	options['log'] = True if 'log' in args else False
+	options['dformat'] = 'csv' if 'csv' in args else 'txt'
+	options['trigs'] = 4 if '4way' in args else 2
+	options['livehist'] = True if 'live' in args else False
+
 	return options
 
 def detect_gate_open_closed(
@@ -84,7 +88,7 @@ def detect_gate_open_closed(
 			minDifference = buffer[i] - threshold
 	gateChX["closed"]["ns"] = time[hit]
 	gateChX["closed"]["index"] = hit
-	
+
 	return gateChX
 
 def calculate_charge(
@@ -101,20 +105,28 @@ def calculate_charge(
 	"""
 	charge = 0.0
 	for i in range(gateopen, gateclosed):
-		charge += abs(buffer[i])	
+		charge += abs(buffer[i])
 	charge *= (timeIntervalns / resistance)
-	
+
 	return charge
 
 def log(loghandle: str, entry: str, time=False) -> None:
 	""" Write to log file """
-	with open(f"./Data/{loghandle}", "a") as logfile:
+	with open(f'./Data/{loghandle}', 'a') as logfile:
 		if time:
 			logfile.write(f"[{dt.now().strftime('%H:%M:%S')}] {entry}\n")
 		else:
-			logfile.write(f"\t{entry}\n")
+			# 11 is length of timestamp
+			logfile.write(f"{' ' * 11}{entry}\n")
 
-### UTILITIES ###
+# --------------- DATA CLASSES ---------------
+
+@dataclass(order=True)
+class ADCDataPack():
+	def __init__(self, x: float):
+		self.x = x
+
+# --------------- UTILITIES ---------------
 
 def print_status(status: dict) -> None:
 	""" Print status in columns (debug purposes) """
