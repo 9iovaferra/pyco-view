@@ -1,5 +1,6 @@
-# Data folder
+# Data folders
 /Data
+/pickles
 
 # __pycache__ folders
 **/__pycache__
@@ -10,6 +11,7 @@
 # Misc
 thread.py
 config.ini.bak
+*.vim
 
 # Compiled source
 *.com
