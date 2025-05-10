@@ -18,16 +18,6 @@ from time import time as get_time
 from fitter import Fitter, get_common_distributions, get_distributions
 from statistics import fmean
 
-class Manager():
-	def __init__(self):
-		self.keystroke = "q"
-		self.continue_ = True
-	
-	def listen(self):
-		event = input("")
-		if event == self.keystroke:
-			self.continue_ = False
-
 def plot_data(
 		bufferChAmV: Array[c_int16],
 		bufferChBmV: Array[c_int16],
@@ -467,24 +457,32 @@ def main():
 		gate["chD"] = detect_gate_open_closed(
 				bufferChDmV, time, thresholdmV, maxSamples, timeIntervalns.value
 				)
-		""" Logging threshold hits """
-		if params["log"] == 1:
-			log(loghandle,
-				f"gate A on: {gate['chA']['open']['mV']:.2f}mV, {gate['chA']['open']['ns']:.2f}ns @ {gate['chA']['open']['index']}",)
-			log(loghandle,
-				f"gate A off: {gate['chA']['closed']['mV']:.2f}mV, {gate['chA']['closed']['ns']:.2f}ns @ {gate['chA']['closed']['index']}")
-			log(loghandle,
-				f"gate B on: {gate['chB']['open']['mV']:.2f}mV, {gate['chB']['open']['ns']:.2f}ns @ {gate['chB']['open']['index']}",)
-			log(loghandle,
-				f"gate B off: {gate['chB']['closed']['mV']:.2f}mV, {gate['chB']['closed']['ns']:.2f}ns @ {gate['chB']['closed']['index']}")
-			log(loghandle,
-				f"gate C on: {gate['chC']['open']['mV']:.2f}mV, {gate['chC']['open']['ns']:.2f}ns @ {gate['chC']['open']['index']}",)
-			log(loghandle,
-				f"gate C off: {gate['chC']['closed']['mV']:.2f}mV, {gate['chC']['closed']['ns']:.2f}ns @ {gate['chC']['closed']['index']}")
-			log(loghandle,
-				f"gate D on: {gate['chD']['open']['mV']:.2f}mV, {gate['chD']['open']['ns']:.2f}ns @ {gate['chD']['open']['index']}",)
-			log(loghandle,
-				f"gate D off: {gate['chD']['closed']['mV']:.2f}mV, {gate['chD']['closed']['ns']:.2f}ns @ {gate['chD']['closed']['index']}")
+		# Skip current acquisition if trigger timed out
+		if gate['chA']['open']['ns'] == 0.0 and gate['chB']['open']['ns'] == 0.0 \
+			and gate['chC']['open']['ns'] == 0.0 and gate['chD']['open']['ns'] == 0.0:
+			if params['log']:
+				log(loghandle, 'Skipping (trigger timeout).')
+			continue
+		else:
+			if params['log']:
+				""" Logging threshold hits """
+				if params['log']:
+					log(loghandle, f"gate A on: {gate['chA']['open']['mV']:.2f}mV, \
+						{gate['chA']['open']['ns']:.2f}ns @ {gate['chA']['open']['index']}",)
+					log(loghandle, f"gate A off: {gate['chA']['closed']['mV']:.2f}mV, \
+						{gate['chA']['closed']['ns']:.2f}ns @ {gate['chA']['closed']['index']}")
+					log(loghandle, f"gate B on: {gate['chB']['open']['mV']:.2f}mV, \
+						{gate['chB']['open']['ns']:.2f}ns @ {gate['chB']['open']['index']}",)
+					log(loghandle, f"gate B off: {gate['chB']['closed']['mV']:.2f}mV, \
+						{gate['chB']['closed']['ns']:.2f}ns @ {gate['chB']['closed']['index']}")
+					log(loghandle, f"gate C on: {gate['chC']['open']['mV']:.2f}mV, \
+						{gate['chC']['open']['ns']:.2f}ns @ {gate['chC']['open']['index']}",)
+					log(loghandle, f"gate C off: {gate['chC']['closed']['mV']:.2f}mV, \
+						{gate['chC']['closed']['ns']:.2f}ns @ {gate['chC']['closed']['index']}")
+					log(loghandle, f"gate D on: {gate['chD']['open']['mV']:.2f}mV, \
+						{gate['chD']['open']['ns']:.2f}ns @ {gate['chD']['open']['index']}",)
+					log(loghandle, f"gate D off: {gate['chD']['closed']['mV']:.2f}mV, \
+						{gate['chD']['closed']['ns']:.2f}ns @ {gate['chD']['closed']['index']}")
 
 		delayBounds = (
 				gate["chA"]["open"]["ns"] + (gate["chB"]["open"]["ns"] - gate["chA"]["open"]["ns"]) / 2,
