@@ -8,7 +8,6 @@ class Bar(TypedDict):
     Pos: float
     Value: float
 
-num_t = Union[int, float]
 class Slider(Frame):
     LINE_COLOR = "#476b6b"
     LINE_WIDTH = 3
@@ -16,26 +15,27 @@ class Slider(Frame):
     BAR_COLOR_OUTTER = "#c2d6d6"
     BAR_RADIUS = 10
     BAR_RADIUS_INNER = BAR_RADIUS - 5
+    # 9iovaferra: labels only use int values in GUI
     DIGIT_PRECISION = ".0f"  # for showing in the canvas
 
     # relative step size in 0 to 1, set to 0 for no step size restiction
     # may be override by the step_size argument in __init__
-    STEP_SIZE:float = 0.0
+    STEP_SIZE: float = 0.0
 
     def __init__(
-        self,
-        master,
-        width: int = 400,
-        height: int = 80,
-        min_val: num_t = 0,
-        max_val: num_t = 1,
-        step_size: Optional[float] = None,
-        init_lis: Optional[list[num_t]] = None,
-        show_value = True,
-        removable = False,
-        addable = False,
-    ):
-        if step_size == None:
+            self,
+            master,
+            width: int = 400,
+            height: int = 80,
+            min_val: Union[int, float] = 0,
+            max_val: Union[int, float] = 1,
+            step_size: Optional[float] = None,
+            init_lis: Optional[list[Union[int, float]]] = None,
+            show_value: bool = True,
+            removable: bool = False,
+            addable: bool = False,
+            ):
+        if step_size is None:
             # inherit from class variable
             step_size = self.STEP_SIZE
         assert step_size >= 0, "step size must be positive"
@@ -44,7 +44,7 @@ class Slider(Frame):
 
         Frame.__init__(self, master, height=height, width=width)
         self.master = master
-        if init_lis == None:
+        if init_lis is None:
             init_lis = [min_val]
         self.init_lis = init_lis
         self.max_val = max_val
@@ -60,7 +60,8 @@ class Slider(Frame):
             self.slider_y = self.canv_H / 2  # y pos of the slider
         else:
             self.slider_y = self.canv_H * 2 / 5
-        self.slider_x = Slider.BAR_RADIUS  # x pos of the slider (left side)
+        # 9iovaferra: added 8 to left pos to account for value label width
+        self.slider_x = Slider.BAR_RADIUS + 8  # x pos of the slider (left side)
 
         self._val_change_callback = lambda lis: None
 
@@ -87,10 +88,10 @@ class Slider(Frame):
         for bar in self.bars:
             bar["Ids"] = self.__addBar(bar["Pos"])
 
-    def getValues(self) -> List[float]:
+    def get(self) -> List[float]:
         values = [bar["Value"] for bar in self.bars]
         return sorted(values)
-    
+
     def setValueChangeCallback(self, callback: Callable[[List[float]], None]):
         self._val_change_callback = callback
 
@@ -108,7 +109,7 @@ class Slider(Frame):
     def _moveBar(self, event):
         x = event.x
         y = event.y
-        if self.selected_idx == None:
+        if self.selected_idx is None:
             return False
         pos = self.__calcPos(x)
         idx = self.selected_idx
@@ -122,7 +123,7 @@ class Slider(Frame):
     def _removeBar(self, event):
         x = event.x
         y = event.y
-        if self.selected_idx == None:
+        if self.selected_idx is None:
             return False
         idx = self.selected_idx
         ids = self.bars[idx]["Ids"]
@@ -196,8 +197,11 @@ class Slider(Frame):
             self.canv.delete(id)
         self.bars[idx]["Ids"] = self.__addBar(pos)
         self.bars[idx]["Pos"] = pos
-        self.bars[idx]["Value"] = pos * (self.max_val - self.min_val) + self.min_val
-        self._val_change_callback(self.getValues())
+        # 9iovaferra: rounded value to unit because truncating to DIGIT_PRECISION=.0f
+        # would sometimes cause disparity between value on label and actual returned
+        # value from bar position [e.g. -45(label) -> -44(value)]
+        self.bars[idx]["Value"] = round(pos * (self.max_val - self.min_val) + self.min_val, 0)
+        self._val_change_callback(self.get())
 
     def __calcPos(self, x):
         """calculate position from x coordinate"""
