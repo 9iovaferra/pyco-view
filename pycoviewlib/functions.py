@@ -1,5 +1,5 @@
 """ Copyright (C) 2019 Pico Technology Ltd. """
-from pycoviewlib.constants import maxADC
+from pycoviewlib.constants import maxADC, PV_DIR
 from dataclasses import dataclass
 from ctypes import c_int16, Array
 import numpy as np
@@ -7,10 +7,10 @@ from datetime import datetime as dt
 from typing import Union
 
 def mV2adc(thresh: float, offset: float, range_: int) -> int:
-	""" Convert ADC counts to millivolts """
-	thresholdADC = int((thresh + offset * 1000) / range_ * maxADC)
+	""" Convert millivolts to ADC counts """
+	adcCounts = int((thresh + offset * 1000) / range_ * maxADC)
 
-	return thresholdADC
+	return adcCounts
 
 def parse_config() -> dict:
 	""" Parser for .ini file """
@@ -30,8 +30,8 @@ def parse_config() -> dict:
 				params[p[0]] = list(int(v) for v in p[1].split(','))
 	params['maxSamples'] = params['preTrigSamples'] + params['postTrigSamples']
 	# Convert target channels to list if more than one
-	if len(params['target']) > 1:
-		params['target'] = list(params['target'])
+	# if len(params['target']) > 1:
+	# 	params['target'] = list(params['target'])
 
 	return params
 
@@ -69,8 +69,8 @@ def detect_gate_open_closed(
 	Threshold hits are returned as (voltage, time) coordinates.
 	"""
 	gateChX = {
-		"open": {"mV": threshold, "ns": 0.0, "index": 0},
-		"closed": {"mV": threshold, "ns": 0.0, "index": 0}
+		'open': {'mV': threshold, 'ns': 0.0, 'index': 0},
+		'closed': {'mV': threshold, 'ns': 0.0, 'index': 0}
 		}
 	hit = 0
 	minValueIndex = buffer.index(min(buffer))
@@ -79,75 +79,84 @@ def detect_gate_open_closed(
 		if abs(buffer[i] - threshold) < abs(minDifference):
 			hit = i
 			minDifference = buffer[i] - threshold
-	gateChX["open"]["ns"] = time[hit]
-	gateChX["open"]["index"] = hit
+	gateChX['open']['ns'] = time[hit]
+	gateChX['open']['index'] = hit
 	minDifference = min(buffer) - threshold
 	for i in range(minValueIndex, maxSamples):
 		if abs(buffer[i] - threshold) < abs(minDifference):
 			hit = i
 			minDifference = buffer[i] - threshold
-	gateChX["closed"]["ns"] = time[hit]
-	gateChX["closed"]["index"] = hit
+	gateChX['closed']['ns'] = time[hit]
+	gateChX['closed']['index'] = hit
 
 	return gateChX
 
 def calculate_charge(
 		buffer: Array[c_int16],
-		gateopen: int,
-		gateclosed: int,
+		gate: tuple[int],
 		timeIntervalns: float,
-		resistance: int
+		coupling: int
 		) -> float:
 	"""
 	Total charge deposited by the particle in the detector.
 	It is defined as the integral of voltage with respect to time,
-	multiplied by dt and divided by the termination resistance.
+	multiplied by dt and divided by the termination coupling.
 	"""
 	charge = 0.0
-	for i in range(gateopen, gateclosed):
+	for i in range(gate[0], gate[1]):
 		charge += abs(buffer[i])
-	charge *= (timeIntervalns / resistance)
+	charge *= (timeIntervalns / coupling)
 
 	return charge
 
 def log(loghandle: str, entry: str, time=False) -> None:
 	""" Write to log file """
-	with open(f'./Data/{loghandle}', 'a') as logfile:
+	with open(f'{PV_DIR}/Data/{loghandle}', 'a') as logfile:
 		if time:
 			logfile.write(f"[{dt.now().strftime('%H:%M:%S')}] {entry}\n")
 		else:
-			# 11 is length of timestamp
-			logfile.write(f"{' ' * 11}{entry}\n")
+			logfile.write(f"{' ' * 11}{entry}\n")  # 11 = len of timestamp
 
-# --------------- DATA CLASSES ---------------
+# ------------------------- DATA CLASSES --------------------------
 
 @dataclass(order=True)
-class ADCDataPack():
-	def __init__(self, x: float):
+class DataPack():
+	def __init__(self, x=0.0):
 		self.x = x
 
-# --------------- UTILITIES ---------------
+# --------------------------- UTILITIES ---------------------------
+
+class Manager():
+	"""
+	During acquisition, script listens for 'q' (quit) command from
+	GUI (Stop button was pressed)
+	"""
+	def __init__(self):
+		self.keystroke = 'q'
+		self.continue_ = True
+
+	def listen(self):
+		event = input('')
+		if event == self.keystroke:
+			self.continue_ = False
 
 def print_status(status: dict) -> None:
 	""" Print status in columns (debug purposes) """
 	if bool(status):
-		print("==> PicoScope Exit Status:")
+		print('==> PicoScope Exit Status:')
 		col_width = max([len(k) for k in status.keys()])
 		for key, value in status.items():
-			print(f"{key: <{col_width}} {value:}")
+			print(f'{key: <{col_width}} {value:}')
 	else:
-		print("No status to show.")
+		print('No status to show.')
 
-def key_from_value(
-		dictionary: dict,
-		value: Union[int,str]
-		) -> Union[list,str]:
-	try:	
+def key_from_value(dictionary: dict, value: Union[int, str]) -> Union[list, str]:
+	try:
 		keys = [k for k, v in dictionary.items() if value in v]
 	except TypeError:
 		keys = [k for k, v in dictionary.items() if v == value]
 	except IndexError:
-		return ""
+		return ''
 	if len(keys) == 1:
 		return keys[0]
 	else:
@@ -159,4 +168,3 @@ def _isfloat(value: str) -> bool:
 		return True
 	except ValueError:
 		return False
-
