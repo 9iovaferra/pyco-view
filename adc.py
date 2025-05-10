@@ -4,8 +4,11 @@ import numpy as np
 from picosdk.ps6000 import ps6000 as ps
 from picosdk.errors import PicoSDKCtypesError
 from picosdk.constants import PICO_STATUS, PICO_STATUS_LOOKUP
-from pycoviewlib.functions import *
-from pycoviewlib.constants import *
+from pycoviewlib.functions import (
+		parse_config, mV2adc, detect_gate_open_closed, calculate_charge, log, key_from_value,
+		DataPack, Manager
+		)
+from pycoviewlib.constants import PV_DIR, maxADC, chInputRanges, couplings, channelIDs
 import matplotlib.pyplot as plt
 from picosdk.functions import adc2mV, assert_pico_ok
 from threading import Thread
@@ -13,17 +16,8 @@ import pickle
 from datetime import datetime
 import sys
 from pathlib import Path
-from time import sleep
+# from time import sleep
 
-class Manager():
-	def __init__(self):
-		self.keystroke = 'q'
-		self.continue_ = True
-
-	def listen(self):
-		event = input('')
-		if event == self.keystroke:
-			self.continue_ = False
 
 def plot_data(
 		bufferChAmV: Array[c_int16],
@@ -63,7 +57,7 @@ def plot_data(
 	fillY = bufferChCmV[gate["open"]["index"]:gate["closed"]["index"]]
 	fillX = np.linspace(gate["open"]["ns"], gate["closed"]["ns"], num=len(fillY))
 	plt.fill_between(fillX, fillY,
-			color="lightgrey", label=f"Total deposited charge\n{charge:.2f} C")
+			color="lightgrey", label=f"Total deposited charge\n{charge:.2f} pC")
 	plt.plot([gate["open"]["ns"]] * 2, [gate["open"]["mV"], max(bufferChCmV)],
 			 linestyle="--", color="black")
 	plt.plot([gate["closed"]["ns"]] * 2, [gate["closed"]["mV"], max(bufferChCmV)],
@@ -102,18 +96,18 @@ def main():
 	params: dict = parse_config()
 	# print_status(params)
 
-	timestamp: str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+	timestamp: str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 
 	""" Creating loghandle if required """
 	if params['log']:
-		loghandle: str = f"adc_log_{timestamp}.txt"
+		loghandle: str = f'adc_log_{timestamp}.txt'
 
 	""" Creating data folder """
 	try:
-		dataPath = Path('~/Documents/pyco-view/Data').expanduser()
+		dataPath = Path(f'{PV_DIR}/Data').expanduser()
 		dataPath.mkdir(exist_ok=True)
 	except PermissionError:
-		print("Permission Error: cannot write to this location.")
+		print('Permission Error: cannot write to this location.')
 		if params['log']:
 			log(
 				loghandle,
@@ -128,19 +122,19 @@ def main():
 	chandle = c_int16()
 	status = {}
 
-	delaySeconds = params["delaySeconds"]
+	delaySeconds = params['delaySeconds']
 	chRange = params[f"ch{params['target']}range"]
 	analogOffset = params[f"ch{params['target']}analogOffset"]
 	thresholdADC = mV2adc(
-			params["thresholdmV"],
+			params['thresholdmV'],
 			analogOffset,
 			chInputRanges[chRange]
 			)
-	autoTrigms = params["autoTrigms"]
-	preTrigSamples = params["preTrigSamples"]
-	postTrigSamples = params["postTrigSamples"]
-	maxSamples = params["maxSamples"]
-	timebase = params["timebase"]
+	autoTrigms = params['autoTrigms']
+	preTrigSamples = params['preTrigSamples']
+	postTrigSamples = params['postTrigSamples']
+	maxSamples = params['maxSamples']
+	timebase = params['timebase']
 	coupling = couplings[key_from_value(couplings, params[f"ch{params['target']}coupling"])][1]
 
 	""" Logging runtime parameters """
@@ -150,8 +144,8 @@ def main():
 		for key, value in params.items():
 			log(loghandle, f'{key: <{col_width}} {value:}')
 
-	status["openUnit"] = ps.ps6000OpenUnit(byref(chandle), None)
-	assert_pico_ok(status["openUnit"])
+	status['openUnit'] = ps.ps6000OpenUnit(byref(chandle), None)
+	assert_pico_ok(status['openUnit'])
 
 	""" Setting up channels according to `params`
 	ps.ps6000SetChannel(
@@ -164,16 +158,16 @@ def main():
 		bandwidth:	(FULL=0, 20MHz=1, 25MHz=2)
 	) """
 	for id_, name in enumerate(channelIDs):
-		status[f"setCh{name}"] = ps.ps6000SetChannel(
+		status[f'setCh{name}'] = ps.ps6000SetChannel(
 				chandle,
 				id_,
-				params[f"ch{name}enabled"],
-				params[f"ch{name}coupling"],
-				params[f"ch{name}range"],
-				params[f"ch{name}analogOffset"],
-				params[f"ch{name}bandwidth"]
+				params[f'ch{name}enabled'],
+				params[f'ch{name}coupling'],
+				params[f'ch{name}range'],
+				params[f'ch{name}analogOffset'],
+				params[f'ch{name}bandwidth']
 				)
-		assert_pico_ok(status[f"setCh{name}"])
+		assert_pico_ok(status[f'setCh{name}'])
 
 	""" Setting up simple trigger on target channel
 	ps.ps6000SetSimpleTrigger(
@@ -185,16 +179,16 @@ def main():
 		delay:		value in seconds
 		wait for:	value in milliseconds
 	) """
-	status["trigger"] = ps.ps6000SetSimpleTrigger(
+	status['trigger'] = ps.ps6000SetSimpleTrigger(
 			chandle,
 			1,
-			channelIDs.index(params["target"]),
+			channelIDs.index(params['target']),
 			thresholdADC,
 			3,
 			delaySeconds,
 			autoTrigms
 			)
-	assert_pico_ok(status["trigger"])
+	assert_pico_ok(status['trigger'])
 
 	""" Get timebase info & pre/post trigger samples to be collected
 	noSamples = maxSamples
@@ -206,12 +200,12 @@ def main():
 	"""
 	timeIntervalns = c_float()
 	returnedMaxSamples = c_int32()
-	status["getTimebase2"] = ps.ps6000GetTimebase2(
+	status['getTimebase2'] = ps.ps6000GetTimebase2(
 			chandle, timebase, maxSamples, byref(timeIntervalns), 1,
 			byref(returnedMaxSamples), 0
 			)
 	try:
-		assert_pico_ok(status["getTimebase2"])
+		assert_pico_ok(status['getTimebase2'])
 	except PicoSDKCtypesError:
 		print(f"/!\\ Error: {PICO_STATUS_LOOKUP[status['getTimebase2']]}")
 		if ps.ps6000PingUnit(chandle) != 'PICO_OK':
@@ -224,11 +218,11 @@ def main():
 	""" Maximum ADC count value """
 	cmaxADC = c_int16(maxADC)
 
-	""" Creating data output file """	
-	dathandle = f"./Data/adc_data_{timestamp}.txt" # read format from gui
+	""" Creating data output file """
+	dathandle = f'{PV_DIR}/Data/adc_data_{timestamp}.txt'  # read format from gui
 	with open(dathandle, "a") as out:
-		out.write("cap\tamplitude (mV)\tpeak2peak (mV)\tcharge (C)\n")
-	
+		out.write('cap\tamplitude (mV)\tpeak2peak (mV)\tcharge (pC)\n')
+
 	""" Thread manager waiting for Stop command """
 	manager = Manager()
 	assistant = Thread(target=manager.listen)
@@ -237,13 +231,14 @@ def main():
 	""" Capture counter """
 	capcount = 1
 
-	data_pack = ADCDataPack(0.0)
+	""" Container for data to be sent to histogram in `main.py` """
+	data_pack = DataPack()
 
 	while manager.continue_:
 		""" Logging capture """
 		if params['log']:
-			log(loghandle, f"==> Beginning capture no. {capcount}", time=True)
-		
+			log(loghandle, f'==> Beginning capture no. {capcount}', time=True)
+
 		""" Run block capture
 		number of pre-trigger samples = preTrigSamples
 		number of post-trigger samples = postTrigSamples
@@ -254,16 +249,16 @@ def main():
 		lpReady = None (using ps6000IsReady rather than ps6000BlockReady)
 		pParameter = None
 		"""
-		status["runBlock"] = ps.ps6000RunBlock(
+		status['runBlock'] = ps.ps6000RunBlock(
 				chandle, preTrigSamples, postTrigSamples, timebase, 0, None, 0, None, None
 				)
-		assert_pico_ok(status["runBlock"])
+		assert_pico_ok(status['runBlock'])
 
 		""" Check for data collection to finish using ps6000IsReady """
 		ready = c_int16(0)
 		check = c_int16(0)
 		while ready.value == check.value:
-			status["isReady"] = ps.ps6000IsReady(chandle, byref(ready))
+			status['isReady'] = ps.ps6000IsReady(chandle, byref(ready))
 
 		""" Create buffers ready for assigning pointers for data collection.
 		'bufferXMin' are generally used for downsampling but in our case they're equal
@@ -281,15 +276,15 @@ def main():
 		buffers length = maxSamples
 		ratio mode = PS6000_RATIO_MODE_NONE = 0 
 		"""
-		status["setDataBuffersA"] = ps.ps6000SetDataBuffers(
+		status['setDataBuffersA'] = ps.ps6000SetDataBuffers(
 				chandle, 0, byref(bufferAMax), byref(bufferAMin), maxSamples, 0
 				)
-		assert_pico_ok(status["setDataBuffersA"])
+		assert_pico_ok(status['setDataBuffersA'])
 
-		status["setDataBuffersC"] = ps.ps6000SetDataBuffers(
+		status['setDataBuffersC'] = ps.ps6000SetDataBuffers(
 				chandle, 2, byref(bufferCMax), byref(bufferCMin), maxSamples, 0
 				)
-		assert_pico_ok(status["setDataBuffersC"])		
+		assert_pico_ok(status['setDataBuffersC'])
 
 		""" Retrieve data from scope to buffers assigned above.
 		start index = 0
@@ -298,10 +293,10 @@ def main():
 		downsample ratio mode = PS6000_RATIO_MODE_NONE
 		pointer to overflow = byref(overflow))
 		"""
-		status["getValues"] = ps.ps6000GetValues(
+		status['getValues'] = ps.ps6000GetValues(
 				chandle, 0, byref(cmaxSamples), 1, 0, 0, byref(overflow)
 				)
-		assert_pico_ok(status["getValues"])		
+		assert_pico_ok(status['getValues'])
 
 		""" Convert ADC counts data to mV """
 		bufferChAmV = adc2mV(bufferAMax, chRange, cmaxADC)
@@ -315,25 +310,31 @@ def main():
 
 		""" Create time data """
 		time = np.linspace(
-				0, (cmaxSamples.value - 1) * timeIntervalns.value, cmaxSamples.value, dtype="float32"
+				0, (cmaxSamples.value - 1) * timeIntervalns.value, cmaxSamples.value
 				)
 
 		""" Detect where the threshold was hit (both falling & rising edge) """
 		gate = detect_gate_open_closed(
 				bufferChAmV, time, thresholdmV, maxSamples, timeIntervalns.value
 				)
-		""" Logging threshold hits """
-		if params['log']:
-			log(loghandle,
-				f"gate on: {gate['open']['mV']:.2f}mV, {gate['open']['ns']:.2f}ns @ {gate['open']['index']}",)
-			log(loghandle,
-				f"gate off: {gate['closed']['mV']:.2f}mV, {gate['closed']['ns']:.2f}ns @ {gate['closed']['index']}")
+		# Skip current acquisition if trigger timed out
+		if gate['open']['ns'] == 0.0 and gate['open']['ns'] == 0.0:
+			if params['log']:
+				log(loghandle, 'Skipping (trigger timeout).')
+			continue
+		else:
+			""" Logging threshold hits """
+			if params['log']:
+				log(loghandle, f"gate on: {gate['open']['mV']:.2f}mV, \
+						{gate['open']['ns']:.2f}ns @ {gate['open']['index']}",)
+				log(loghandle, f"gate off: {gate['closed']['mV']:.2f}mV, \
+						{gate['closed']['ns']:.2f}ns @ {gate['closed']['index']}")
 
-		""" Calculating relevant data """
+		""" Calculating relevant data. Creating pickle file for use in `main.py` """
 		amplitude = abs(min(bufferChCmV))
 		peakToPeak = abs(min(bufferChCmV)) - abs(max(bufferChCmV))
 		charge = calculate_charge(
-				bufferChCmV, gate["open"]["index"], gate["closed"]["index"],
+				bufferChCmV, (gate['open']['index'], gate['closed']['index']),
 				timeIntervalns.value, coupling
 				)
 		data_pack.x = charge
@@ -342,18 +343,18 @@ def main():
 
 		""" Logging capture results """
 		if params['log']:
-			log(loghandle, f"amplitude: {amplitude:.2f}mV")
-			log(loghandle, f"peak-to-peak: {peakToPeak:.2f}mV")
-			log(loghandle, f"charge: {charge:.2f}C")
+			log(loghandle, f'amplitude: {amplitude:.2f}mV')
+			log(loghandle, f'peak-to-peak: {peakToPeak:.2f}mV')
+			log(loghandle, f'charge: {charge:.2f}pC')
 
 		""" Print data to file """
-		with open(dathandle, "a") as out:
-			out.write(f"{capcount}\t{amplitude:.9f}\t{peakToPeak:.9f}\t{charge:.9f}\n")
+		with open(dathandle, 'a') as out:
+			out.write(f'{capcount}\t{amplitude:.9f}\t{peakToPeak:.9f}\t{charge:.9f}\n')
 
-		if params["plot"]:
+		if params['plot']:
 			plot_data(
 					bufferChAmV, bufferChCmV, gate, time, timeIntervalns,
-					charge, peakToPeak, f"{timestamp}_{str(capcount)}",
+					charge, peakToPeak, f'{timestamp}_{str(capcount)}',
 					n=capcount
 					)
 
@@ -361,30 +362,30 @@ def main():
 		if not 0 in status.values():
 			manager.continue_ = False
 			if params['log']:
-				log(loghandle, "==> Something went wrong! PicoScope status:", time=True)
+				log(loghandle, '==> Something went wrong! PicoScope status:', time=True)
 				col_width = max([len(k) for k in status.keys()])
 				for key, value in status.items():
-					log(loghandle, f"{key: <{col_width}} {value:}")
+					log(loghandle, f'{key: <{col_width}} {value:}')
 
-		capcount +=1
-		random_wait = round(np.random.random(), 2)
-		sleep(2 * random_wait)
+		capcount += 1
+		# random_wait = round(np.random.random(), 2)
+		# sleep(2 * random_wait)
 
 	assistant.join()
 
 	""" Stop acquisition & close unit """
-	status["stop"] = ps.ps6000Stop(chandle)
-	assert_pico_ok(status["stop"])
+	status['stop'] = ps.ps6000Stop(chandle)
+	assert_pico_ok(status['stop'])
 	ps.ps6000CloseUnit(chandle)
 
 	""" Logging exit status & data location """
 	if params['log']:
-		log(loghandle, "==> Job finished without errors. Data and/or plots saved to:", time=True)
-		log(loghandle, f"{str(dataPath)}")
-		log(loghandle, "==> PicoScope exit status:", time=True)
-		colWidth = max([len(k) for k in status.keys()])
+		log(loghandle, '==> Job finished without errors. Data and/or plots saved to:', time=True)
+		log(loghandle, f'{str(dataPath)}')
+		log(loghandle, '==> PicoScope exit status:', time=True)
+		col_width = max([len(k) for k in status.keys()])
 		for key, value in status.items():
-			log(loghandle, f"{key: <{colWidth}} {value:}")
+			log(loghandle, f'{key: <{col_width}} {value:}')
 
 
 if __name__ == "__main__":
