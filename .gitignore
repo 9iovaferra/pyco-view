@@ -1,16 +1,9 @@
-# Data folders
+# Folders
 /Data
-/pickles
-
-# __pycache__ folders
 **/__pycache__
 
-# delay-sim folder
-/delay-sim
-
 # Misc
-thread.py
-config.ini.bak
+config.ini
 *.vim
 
 # Compiled source
