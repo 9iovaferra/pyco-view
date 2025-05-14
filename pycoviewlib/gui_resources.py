@@ -14,6 +14,9 @@ lbf_asym_padding = {'padx': (WIDE_PAD, 0), 'pady': WIDE_PAD, 'ipadx': THIN_PAD, 
 lbf_asym_padding_no_top = {'padx': (WIDE_PAD, 0), 'pady': (0, WIDE_PAD), 'ipadx': THIN_PAD, 'ipady': THIN_PAD}
 lbf_contents_padding = {'padx': (THIN_PAD, 0), 'pady': (MED_PAD, 2)}
 
+""" Colors """
+HIST_COLOR = 'tab:blue'
+
 def h_separator(parent, row: int, columnspan: int) -> None:
 	Separator(parent, orient='horizontal').grid(
 			column=0,
