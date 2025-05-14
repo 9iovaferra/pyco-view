@@ -2,25 +2,23 @@
 Copyright (C) 2019 Pico Technology Ltd.
 tkSliderWidget Copyright (c) 2020, Mengxun Li
 """
-# from tkinter import *
-from tkinter import (
-		Tk, Toplevel, Menu, Checkbutton, Spinbox, IntVar, StringVar, CENTER
-		)
+from tkinter import Tk, Toplevel, Menu, Checkbutton, Spinbox, IntVar, StringVar
 from tkinter.filedialog import asksaveasfilename
 from tkinter.ttk import (
 		Label, Frame, Labelframe, Button, Combobox, OptionMenu, Notebook
 		)
-from pycoviewlib.functions import parse_config, key_from_value, DataPack
+from pycoviewlib.functions import parse_config, key_from_value, get_timeinterval
 from pycoviewlib.constants import *
 from pycoviewlib.gui_resources import *
 from pycoviewlib.tkSliderWidget.tkSliderWidget import Slider
+from adc import ADC
+from tdc import TDC
+from mntm import Meantimer
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from threading import Thread, Event
-from subprocess import Popen, PIPE, STDOUT
 from queue import Queue
-import pickle
 from os import system, listdir, remove
 from pathlib import Path
 from typing import Union
@@ -41,6 +39,8 @@ class RootWindow(Tk):
 		self.file_menu = Menu(self.menu_bar, tearoff=0)
 		self.menu_bar.add_cascade(menu=self.file_menu, label='File')
 		self.file_menu.add_command(label='Open data folder', command=self.show_data_folder)
+		self.file_menu.add_separator()
+		self.file_menu.add_command(label='Generate config file', command=self.generate_config)
 		self.help_menu = Menu(self.menu_bar, tearoff=0)
 		self.menu_bar.add_cascade(menu=self.help_menu, label='Help')
 		self.help_menu.add_command(label='About', command=self.open_about_window)
@@ -70,16 +70,26 @@ class RootWindow(Tk):
 		datapath = Path(f'{PV_DIR}/Data')
 		system(f'xdg-open {datapath}')
 
+	def generate_config(self) -> None:
+		"""
+		Pulls settings from backup and creates new (or overwrites
+		existing) config.ini
+		"""
+		with open(f'{PV_DIR}/backup/config.ini.bak', 'r') as ini:
+			lines = ini.readlines()
+		with open(f'{PV_DIR}/config.ini', 'w') as ini:
+			ini.writelines(lines)
+
 	def open_about_window(self) -> None:
 		about = Toplevel()
 		about.resizable(0, 0)
 		about.after(0, self.hide())
 		about.title('About')
-		title = Label(about, text='PycoView', font=18, anchor=CENTER)
+		title = Label(about, text='PycoView', font=18, anchor='center')
 		title.grid(column=0, row=0, **uniform_padding, sticky='new')
-		app_version = Label(about, text='v0.57 (pre-alpha)', anchor=CENTER)
+		app_version = Label(about, text='v0.57 (pre-alpha)', anchor='center')
 		app_version.grid(column=0, row=1, **uniform_padding, sticky='new')
-		link = Label(about, text='Github Repository', foreground='blue', cursor='hand2', anchor=CENTER)
+		link = Label(about, text='Github Repository', foreground='blue', cursor='hand2', anchor='center')
 		link.grid(column=0, row=2, **uniform_padding, sticky='esw')
 		link.bind('<Button-1>', lambda _: open_new('https://github.com/9iovaferra/pyco-view'))
 		self.center(target=about)
@@ -150,20 +160,51 @@ class ChannelSettings():
 		self.bandwidth.grid(column=0, row=8, padx=THIN_PAD, sticky='nw')
 
 class Histogram():
-	def __init__(self, root, xlim: list[int], ylim: list[int], bins: int):
-		self.root = root
+	def __init__(self, parent: Labelframe, xlim: list[int], ylim: list[int], bins: int, mode: str = ''):
+		self.parent = parent
 		self.fig, self.ax = plt.subplots(figsize=(6, 4), layout='tight')
 		self.xlim = xlim
 		self.ylim = ylim
 		self.bins = bins
 		self.buffer = []
-		self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
+		self.mode = mode
+		self.canvas = FigureCanvasTkAgg(self.fig, master=self.parent)
 		self.canvas.get_tk_widget().grid(column=0, row=0, padx=THIN_PAD, pady=THIN_PAD, sticky='nesw')
 		self.stop_event = Event()
-		self.queue = Queue()
+		self.stopped = True
+		self.queue = Queue(maxsize=100)
 
-	def create(self, mode: str, bounds=None, bins=None) -> None:
-		self.ax.set_xlabel('Charge (pC)' if mode == 'adc' else 'Delay (ns)')
+	def start(self, root: Tk):
+		"""
+		Creates follower thread, attempts to setup communication with PicoScope,
+		exits if unsuccessful, starts thread otherwise
+		"""
+		pvStatus.set(f'Starting {key_from_value(modes, self.mode)}...')
+		self.root = root
+		self.cleanup()  # Scrape canvas & buffer if restarting
+		self.follower = Thread(target=self.follow)
+		match self.mode:
+			case 'adc':
+				self.applet = ADC(params)
+			case 'tdc':
+				self.applet = TDC(params)
+			case 'mntm':
+				self.applet = Meantimer(params)
+		err = self.applet.setup()
+		if err is not None:
+			pvStatus.set(f'(!) {err}')
+			return
+		self.stopped = False
+		self.stop_event.clear()
+		self.follower.start()
+		self.root.protocol('WM_DELETE_WINDOW', self.kill)
+
+	def create(self, bounds: tuple[int, int] = None, bins: int = None) -> None:
+		"""
+		Generates or updates the histogram, if new bounds and/or bins values
+		are provided. Ticks are adjusted to ensure readability.
+		"""
+		self.ax.set_xlabel('Charge (pC)' if self.mode == 'adc' else 'Delay (ns)')
 		self.ax.set_ylabel('Counts')
 
 		if bounds is not None and bounds != self.xlim:
@@ -174,7 +215,8 @@ class Histogram():
 			self.ax.set_xlim(self.xlim)
 		if not self.ax.patches:  # Only update ylim if histogram is empty
 			self.ax.set_ylim(self.ylim)
-		yticks = range(0, int(self.ax.get_ylim()[1]) + 5, 5)
+			yticks = range(0, int(self.ax.get_ylim()[1]) + 5, 5)
+			self.ax.set_yticks(ticks=list(yticks), labels=[f'{lbl}' for lbl in yticks])
 		if (self.xlim[1] - self.xlim[0]) == 200:
 			xticks = range(int(self.xlim[0]), int(self.xlim[1]) + 20, 20)
 		elif (self.xlim[1] - self.xlim[0]) >= 100:
@@ -182,16 +224,15 @@ class Histogram():
 		else:
 			xticks = range(int(self.xlim[0]), int(self.xlim[1]) + 5, 5)
 		self.ax.set_xticks(ticks=list(xticks), labels=[f'{lbl}' for lbl in xticks])
-		self.ax.set_yticks(ticks=list(yticks), labels=[f'{lbl}' for lbl in yticks])
 		self.ax.yaxis.grid(zorder=0)
 
 		if bins is not None and bins != self.bins:
 			self.bins = bins
 			update_setting(['histBins'], [bins])
-			if self.ax.patches:  # Readjust bins if histogram has data
-				_ = [bar.remove() for bar in self.ax.patches]
-				counts, bins = np.histogram(self.buffer, range=self.xlim, bins=self.bins)
-				self.ax.stairs(counts, bins, fill=True, color='tab:blue', zorder=3)
+			# if self.ax.patches:  # Readjust bins if histogram has data
+			# 	_ = [bar.remove() for bar in self.ax.patches]
+			# 	counts, bins = np.histogram(self.buffer, range=self.xlim, bins=self.bins)
+			# 	self.ax.stairs(counts, bins, fill=True, color='tab:blue', zorder=3)
 
 		self.canvas.draw()
 
@@ -202,35 +243,33 @@ class Histogram():
 				)
 		plt.savefig(figureSavePath)
 
-	def follow(self):
+	def follow(self) -> None:
 		"""
-		Checks /pickles folder for pickled data coming from applet.
+		Gets data by running the applet.
 		All tkinter commands must run in mainloop, so data is queued
-		to `place_on_canvas` which is outside of follower thread.
+		to `place_on_canvas()` which is outside of follower thread.
 		"""
-		self.cleanup()
-		n = 1
+		count = 1
 		while not self.stop_event.is_set():
-			pickle_files = listdir('pickles')
-			if pickle_files:
-				try:
-					with open(f'pickles/{pickle_files[-1]}', 'rb') as pkl:
-						data = pickle.load(pkl)
-				except EOFError:
+			if len(self.queue.queue) < 100:
+				data, err = self.applet.run()
+				if err is not None:
+					pvStatus.set(f'(!) {err}')
+					break
+				elif data is None and not self.stop_event.is_set():
+					pvStatus.set(f'Capture #{count}... skipping (trigger timed out)')
 					continue
-				except pickle.UnpicklingError:
-					print(f'/!\\ {pickle_files[-1]} has corrupted data')
-					continue
-				self.queue.put(f'{pickle_files[-1]}')
-				self.place_on_canvas(data=data.x, n=n)
-				print(f'follow: Unpickled {pickle_files[-1]}')
-				remove(f'pickles/{pickle_files[-1]}')
-				n += 1
+				self.queue.put(data)
+			self.place_on_canvas(n=count)
+			count += 1
 
-		self.cleanup()
+		self.applet.stop()
+		self.stop_event.clear()
+		self.stopped = True
+		pvStatus.set('Idle')
 
-	def place_on_canvas(self, data: float, n: int) -> None:
-		self.queue.get_nowait()
+	def place_on_canvas(self, n: int) -> None:
+		data = self.queue.get()
 		if self.ax.patches and n % 5 == 0:  # Only update every 5 counts
 			_ = [bar.remove() for bar in self.ax.patches]
 
@@ -238,7 +277,7 @@ class Histogram():
 
 		if n % 5 == 0:
 			counts, bins = np.histogram(self.buffer, range=self.xlim, bins=self.bins)
-			self.ax.stairs(counts, bins, fill=True, color='tab:blue', zorder=3)
+			self.ax.stairs(counts, bins, fill=True, color=HIST_COLOR, zorder=3)
 
 			yUpperLim = int(self.ax.get_ylim()[1])
 			if np.max(counts) > yUpperLim * 0.95:
@@ -248,10 +287,12 @@ class Histogram():
 					yLimNudge = 10
 				elif yUpperLim in range(100, 200):
 					yLimNudge = 20
-				elif yUpperLim in range(200, 500):
+				elif yUpperLim in range(200, 300):
 					yLimNudge = 25
-				elif yUpperLim >= 500:
+				elif yUpperLim in range(300, 500):
 					yLimNudge = 50
+				elif yUpperLim >= 500:
+					yLimNudge = 100
 				self.ax.set_ylim(0, yUpperLim + yLimNudge)
 				self.ax.set_yticks(
 						ticks=list(range(0, yUpperLim + 2 * yLimNudge, yLimNudge)),
@@ -259,50 +300,29 @@ class Histogram():
 						)
 			self.canvas.draw()
 
+		if not self.stop_event.is_set():
+			pvStatus.set(f'Capture #{n}')
 		self.queue.task_done()
 
-	def cleanup(self):
-		if listdir('pickles'):
-			_ = [remove(f'pickles/{p}') for p in listdir('pickles')]
-
-class Job:
-	def __init__(self, root: Tk, applet: str, hist: Histogram) -> None:
-		self.root = root
-		self.applet = applet
-		self.hist = hist
-		self.follower_thread = Thread(target=self.hist.follow)
-
-	def run(self, mode: str) -> None:
-		self.applet = mode
-		self.thread = Thread(target=self.start)
-		self.thread.start()
-		self.follower_thread.start()
-		# Exit subprocess if GUI is closed
-		self.root.protocol('WM_DELETE_WINDOW', self.kill)
-
-	def start(self) -> None:
-		print(f'Running {self.applet}.py...')
-		self.process = Popen(
-				[PYTHON, f'{self.applet}.py'], stdin=PIPE, stderr=STDOUT
-				)
-		self.stopped = False
+	def cleanup(self) -> None:
+		if self.ax.patches:
+			_ = [bar.remove() for bar in self.ax.patches]
+			self.buffer = []
+			self.canvas.draw()
 
 	def stop(self) -> None:
-		"""
-		Stop subprocess and quit GUI.
-		Avoid killing subprocess more than once.
-		"""
 		if self.stopped:
+			pvStatus.set('No process to stop.')
 			return
-		print(f'Stopping acquisition in {self.applet}.py')
-		out, err = self.process.communicate(input=b'q\n')
-		self.process.wait()
-		self.thread.join()
-		self.hist.stop_event.set()
-		self.stopped = True
+		pvStatus.set('Stopping...')
+		self.stop_event.set()
 
 	def kill(self) -> None:
 		self.stop()
+		all_clear = self.stopped
+		while not all_clear:
+			all_clear = self.stopped
+		self.root.after(500, print(f'{self.follower.is_alive()=}'))
 		self.root.quit()
 		self.root.destroy()
 
@@ -310,14 +330,58 @@ def refresh_run_tab(event, tab: Frame) -> None:
 	if event.widget.tab('current')['text'] == 'Run':
 		tab.update_idletasks()
 
+def apply_changes(settings: dict, apply_btn: Button) -> None:
+	""" Compares `settings` against `params`,
+	sends updated values to `update_setting()` """
+	keys = []
+	values = []
+	update = False
+	for k, v in settings.items():
+		if 'mode' in k:
+			new_value = modes[v.get()]
+		elif 'range' in k:
+			new_value = chInputRanges.index(v.get())
+		elif 'coupling' in k:
+			new_value = couplings[v.get()][0]
+		elif 'analogOffset' in k:
+			new_value = v.get() / 1000
+		elif 'bandwidth' in k:
+			new_value = bandwidths[v.get()]
+		else:
+			new_value = v.get()
+		if params[k] != new_value:
+			keys.append(k)
+			values.append(new_value)
+			update = True
+	if update:
+		update_setting(keys, values)
+	apply_btn.state(['disabled'])
+
+def update_setting(
+		keys: list[str],
+		new_values: list[Union[str, int, float]]
+		) -> None:
+	"""
+	Compares key-value pairs in `config.ini` to
+	the same pairs given as input, overwrites file as needed
+	"""
+	with open(f'{PV_DIR}/config.ini', 'r') as ini:
+		lines = ini.readlines()
+	for k, v in zip(keys, new_values):
+		print(f'{k}: {params[k]} -> {v}')
+		params[k] = v
+		for i, line in enumerate(lines):
+			if k in line:
+				lines[i] = f'{k} = {v}\n'
+				break
+	with open(f'{PV_DIR}/config.ini', 'w') as ini:
+		ini.writelines(lines)
+	print('Config updated.\n')
+
 def on_mode_change(mode: str, hist: Histogram) -> None:
 	update_setting(['mode'], [mode])
-	hist.create(mode=mode)
-
-def get_timebase_lbl(timebase: int) -> str:
-	""" Calculate time interval between captures based on timebase to display on widget """
-	interval = int(2 ** timebase / 5e-3 if timebase in range(5) else (timebase - 4) / 1.5625e-4)
-	return f'{interval} ps' if interval < 1000 else f'{round(interval / 1000, 1)} ns'
+	hist.mode = mode
+	hist.create()
 
 def enable_apply_btn(apply_btn: Button) -> None:
 	if apply_btn.instate(['disabled']):
@@ -379,8 +443,8 @@ def main() -> None:
 			'range': [StringVar(value=f'±{r}') for r in param_ranges],
 			'analogOffset': [IntVar(value=int(o * 1000)) for o in param_offsets],
 			'coupling': [StringVar(value=c) for c in param_couplings],
-			'target': [StringVar(value=u'\u2713' if ch in params['target'] else u'\u2717') for ch in channelIDs],
-			'timebase': StringVar(value=get_timebase_lbl(params['timebase'])),
+			'target': [StringVar(value=u'\u25cF' if ch in params['target'] else u'\u25cB') for ch in channelIDs],
+			'timebase': StringVar(value=get_timeinterval(params['timebase'])),
 			'thresholdmV': StringVar(value=f"{params['thresholdmV']:.0f} mV"),
 			'delaySeconds': StringVar(value=f"{params['delaySeconds']} s"),
 			'autoTrigms': StringVar(value=f"{params['autoTrigms']} ms"),
@@ -456,22 +520,23 @@ def main() -> None:
 	""" Histogram """
 	histogramLbf = Labelframe(runTab, text='Histogram')
 	histogramLbf.grid(column=2, row=0, columnspan=6, rowspan=2, **hist_padding, sticky='nesw')
-	Label(runTab, text='Bounds:', anchor='w').grid(column=2, row=2, padx=(THIN_PAD, 0), pady=(THIN_PAD, 0), sticky='n')
+
+	Label(runTab, text='Bounds:', anchor='w').grid(column=2, row=2, padx=(THIN_PAD, 0), pady=(WIDE_PAD, 0), sticky='n')
 	histBounds = Slider(
 			runTab, width=220, height=40, min_val=-100, max_val=100, init_lis=params['histBounds'],
 			step_size=5, show_value=True, removable=False, addable=False
 			)
-	histBounds.grid(column=3, row=2, pady=0, sticky='n')
-	Label(runTab, text='Bins:', anchor=CENTER).grid(column=4, row=2, padx=0, pady=THIN_PAD, sticky='n')
+	histBounds.grid(column=3, row=2, pady=(THIN_PAD, 0), sticky='n')
+	Label(runTab, text='Bins:', anchor='center').grid(column=4, row=2, padx=0, pady=WIDE_PAD, sticky='n')
 	histBinsVar = IntVar(value=params['histBins'])
 	binsSpbx = Spinbox(runTab, from_=50, to=200, textvariable=histBinsVar, width=5, increment=10)
-	binsSpbx.grid(column=5, row=2, padx=(MED_PAD, 0), pady=(THIN_PAD, 0), sticky='nw')
+	binsSpbx.grid(column=5, row=2, padx=(MED_PAD, 0), pady=(WIDE_PAD, 0), sticky='nw')
 
 	histogram = Histogram(
-			root=histogramLbf, xlim=histBounds.get(), ylim=[0, 15], bins=histBinsVar.get()
+			parent=histogramLbf, xlim=histBounds.get(), ylim=[0, 15], bins=histBinsVar.get()
 			)
-	Label(topFrame, text='Mode:').grid(column=0, row=0, sticky='w')
 
+	Label(topFrame, text='Mode:').grid(column=0, row=0, sticky='w')
 	modeVar = StringVar(value=key_from_value(modes, params['mode']))
 	modeSelector = OptionMenu(
 			topFrame,
@@ -481,85 +546,43 @@ def main() -> None:
 			command=lambda _: on_mode_change(modes[modeVar.get()], hist=histogram)
 			)
 	modeSelector.grid(column=1, row=0, padx=WIDE_PAD, sticky='w')
+	histogram.mode = modes[modeVar.get()]
 
-	histogram.create(modes[modeVar.get()])
+	histogram.create()
 
 	histApplyBtn = Button(
 			runTab,
 			text='Apply',
 			width=9,
-			command=lambda: histogram.create(modes[modeVar.get()], histBounds.get(), histBinsVar.get())
+			command=lambda: histogram.create(histBounds.get(), histBinsVar.get())
 			)
-	histApplyBtn.grid(column=6, row=2, padx=(THIN_PAD, 0), pady=(THIN_PAD, 0), ipady=THIN_PAD, sticky='ne')
+	histApplyBtn.grid(column=6, row=2, padx=(THIN_PAD, 0), pady=(WIDE_PAD, 0), ipady=THIN_PAD, sticky='ne')
 	histSaveBtn = Button(runTab, text='Save as...', width=9, command=histogram.save)
-	histSaveBtn.grid(column=7, row=2, padx=0, pady=(THIN_PAD, 0), ipady=THIN_PAD, sticky='ne')
+	histSaveBtn.grid(column=7, row=2, padx=0, pady=(WIDE_PAD, 0), ipady=THIN_PAD, sticky='ne')
 
 	""" Start/Stop job buttons """
-	job = Job(root=root, applet=modes[modeVar.get()], hist=histogram)
-	startButton = Button(runTab, text='START', command=lambda: job.run(modes[modeVar.get()]))
+	# job = Job(root=root, applet=modes[modeVar.get()], hist=histogram)
+	startButton = Button(runTab, text='START', command=lambda: histogram.start(root=root))
 	startButton.grid(column=0, row=1, padx=(WIDE_PAD,0), pady=0, ipadx=THIN_PAD, ipady=THIN_PAD, sticky='esw')
-	stopButton = Button(runTab, text='STOP', command=job.stop)
+	stopButton = Button(runTab, text='STOP', command=histogram.stop)
 	stopButton.grid(column=1, row=1, padx=(WIDE_PAD,0), pady=0, ipadx=THIN_PAD, ipady=THIN_PAD, sticky='esw')
 
-	""" Settings tab. The 'settings' dictionary will store all the
-	temporary changes until the 'Apply' button is pressed, when
-	such changes will be written to the config.ini file. """
+	""" Status textbox """
+	statusFrame = Frame(runTab)
+	statusFrame.grid(column=0, row=2, columnspan=2, padx=(WIDE_PAD, 0), pady=(WIDE_PAD, 0), sticky='nesw')
+	Label(statusFrame, text='Status:').grid(column=0, row=0, sticky='sw')
+	global pvStatus
+	pvStatus = StringVar(runTab, value='Idle')
+	Label(statusFrame, textvariable=pvStatus).grid(column=1, row=0, sticky='sw')
+
+	""" Settings tab. The 'settings' dictionary will temporarily store all the changes until
+	the 'Apply' button is clicked, when such changes will be written to the config.ini file. """
 	global settings
 	settings = {}
 
-	def apply_changes(settings: dict) -> None:
-		""" Compares `settings` against `params`,
-		sends updated values to `update_setting()` """
-		keys = []
-		values = []
-		update = False
-		for k, v in settings.items():
-			if 'mode' in k:
-				new_value = modes[v.get()]
-			elif 'range' in k:
-				new_value = chInputRanges.index(v.get())
-			elif 'coupling' in k:
-				new_value = couplings[v.get()][0]
-			elif 'analogOffset' in k:
-				new_value = v.get() / 1000
-			elif 'bandwidth' in k:
-				new_value = bandwidths[v.get()]
-			else:
-				new_value = v.get()
-			if params[k] != new_value:
-				keys.append(k)
-				values.append(new_value)
-				update = True
-		if update:
-			update_setting(keys, values)
-		applySettingsBtn.state(['disabled'])
-
-	def update_setting(
-			keys: list[str],
-			new_values: list[Union[str, int, float]]
-			) -> None:
-		"""
-		Compares keys-value pairs in `config.ini` to
-		the same pairs given as input, overwrites file as needed
-		"""
-		with open(f'{PV_DIR}/config.ini', 'r') as ini:
-			lines = ini.readlines()
-		for k, v in zip(keys, new_values):
-			print(f'{k}: {params[k]} -> {v}')
-			params[k] = v
-			for i, line in enumerate(lines):
-				if k in line:
-					lines[i] = f'{k} = {v}\n'
-					break
-		with open(f'{PV_DIR}/config.ini', 'w') as ini:
-			ini.writelines(lines)
-		print('Config updated.\n')
-
-
 	""" Trigger settings """
-	def target_selection(flags: list[StringVar], targets: StringVar, apply_btn: Button) -> None:
+	def target_selection(flags: list[StringVar], targets: StringVar) -> None:
 		targets.set(flags[0].get() + flags[1].get() + flags[2].get() + flags[3].get())
-		enable_apply_btn(apply_btn)
 
 	trigSettingsLbf = Labelframe(settingsTab, text='Trigger')
 	trigSettingsLbf.grid(column=0, row=0, rowspan=2, **lbf_asym_padding, sticky='new')
@@ -573,7 +596,7 @@ def main() -> None:
 			text='A',
 			onvalue='A',
 			offvalue='',
-			command=lambda: target_selection(targetFlags, settings['target'], applySettingsBtn)
+			command=lambda: target_selection(targetFlags, settings['target'])
 			)
 	targetBChbx = Checkbutton(
 			trigSettingsLbf,
@@ -581,7 +604,7 @@ def main() -> None:
 			text='B',
 			onvalue='B',
 			offvalue='',
-			command=lambda: target_selection(targetFlags, settings['target'], applySettingsBtn)
+			command=lambda: target_selection(targetFlags, settings['target'])
 			)
 	targetCChbx = Checkbutton(
 			trigSettingsLbf,
@@ -589,7 +612,7 @@ def main() -> None:
 			text='C',
 			onvalue='C',
 			offvalue='',
-			command=lambda: target_selection(targetFlags, settings['target'], applySettingsBtn)
+			command=lambda: target_selection(targetFlags, settings['target'])
 			)
 	targetDChbx = Checkbutton(
 			trigSettingsLbf,
@@ -597,7 +620,7 @@ def main() -> None:
 			text='D',
 			onvalue='D',
 			offvalue='',
-			command=lambda: target_selection(targetFlags, settings['target'], applySettingsBtn)
+			command=lambda: target_selection(targetFlags, settings['target'])
 			)
 	for i, c in enumerate([targetAChbx, targetBChbx, targetCChbx, targetDChbx]):
 		if channelIDs[i] in params['target']:
@@ -694,22 +717,13 @@ def main() -> None:
 
 	""" Apply settings button """
 	applySettingsBtn = Button(
-			settingsTab, text='Apply', takefocus=False, command=lambda: apply_changes(settings)
+			settingsTab, text='Apply', takefocus=False, command=lambda: apply_changes(settings, applySettingsBtn)
 			)
 	applySettingsBtn.state(['disabled'])  # Will only be enabled if a setting is changed
 	applySettingsBtn.grid(column=4, row=2, padx=0, pady=0, ipadx=THIN_PAD, ipady=THIN_PAD, sticky='e')
 
 	for variable in settings.values():  # Enable Apply button if any variable is changed
 		variable.trace_add('write', lambda var, index, mode: enable_apply_btn(applySettingsBtn))
-
-# 	for cs in [chASettings, chBSettings, chCSettings, chDSettings]:
-# 		cs.enabled.configure(command=lambda: enable_apply_btn(applySettingsBtn))
-# 		cs.chRange.bind('<<ComboboxSelected>>', lambda _: enable_apply_btn(applySettingsBtn))
-# 		cs.coupling.bind('<<ComboboxSelected>>', lambda _: enable_apply_btn(applySettingsBtn))
-# 		settings[f'ch{cs.id}analogOffset'].trace_add(
-# 				'write', lambda var, index, mode: enable_apply_btn(applySettingsBtn)
-# 				)
-# 		cs.coupling.bind('<<ComboboxSelected>>', lambda _: enable_apply_btn(applySettingsBtn))
 
 	root.center()
 	root.mainloop()
