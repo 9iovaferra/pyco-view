@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from ctypes import c_int16, Array
 import numpy as np
 from datetime import datetime as dt
+from time import perf_counter
+from os import listdir
 from typing import Union
 
 def mV2adc(thresh: float, offset: float, range_: int) -> int:
@@ -15,6 +17,12 @@ def mV2adc(thresh: float, offset: float, range_: int) -> int:
 def parse_config() -> dict:
 	""" Parser for .ini file """
 	params = {}
+	if 'config.ini' not in listdir(PV_DIR):
+		with open(f'{PV_DIR}/backup/config.ini.bak', 'r') as ini:
+			lines = ini.readlines()
+		with open(f'{PV_DIR}/config.ini', 'w') as ini:
+			ini.writelines(lines)
+
 	with open('config.ini', 'r') as ini:
 		for line in ini:
 			if '[' in line or line == '\n':
@@ -73,15 +81,16 @@ def detect_gate_open_closed(
 		'closed': {'mV': threshold, 'ns': 0.0, 'index': 0}
 		}
 	hit = 0
-	minValueIndex = buffer.index(min(buffer))
-	minDifference = min(buffer) - threshold
+	minValue = min(buffer)
+	minValueIndex = buffer.index(minValue)
+	minDifference = minValue - threshold
 	for i in range(minValueIndex):
 		if abs(buffer[i] - threshold) < abs(minDifference):
 			hit = i
 			minDifference = buffer[i] - threshold
 	gateChX['open']['ns'] = time[hit]
 	gateChX['open']['index'] = hit
-	minDifference = min(buffer) - threshold
+	minDifference = minValue - threshold
 	for i in range(minValueIndex, maxSamples):
 		if abs(buffer[i] - threshold) < abs(minDifference):
 			hit = i
@@ -126,6 +135,14 @@ class DataPack():
 
 # --------------------------- UTILITIES ---------------------------
 
+def get_timeinterval(timebase: int) -> str:
+	"""
+	Calculate time interval between captures based on timebase to display on widget.
+	See PS6000 Series Programmer's guide
+	"""
+	interval = int(2 ** timebase / 5e-3 if timebase in range(5) else (timebase - 4) / 1.5625e-4)
+	return f'{interval} ps' if interval < 1000 else f'{round(interval / 1000, 1)} ns'
+
 class Manager():
 	"""
 	During acquisition, script listens for 'q' (quit) command from
@@ -139,6 +156,23 @@ class Manager():
 		event = input('')
 		if event == self.keystroke:
 			self.continue_ = False
+
+class Benchmark:
+	def __init__(self):
+		self.stopwatch = [perf_counter()]
+		self.convert = {"ms": 1000, "µs": 1000000}
+
+	def split(self):
+		self.stopwatch.append(perf_counter())
+
+	def results(self, unit="ms"):
+		avg = .0
+		for i in range(len(self.stopwatch) - 1):
+			avg += (self.stopwatch[i + 1] - self.stopwatch[i])
+		print(f"Total execution time: {dt.strftime(dt.utcfromtimestamp(avg), '%T.%f')[:-3]}")
+		avg /= (len(self.stopwatch) - 1)
+		print(f'Average time per capture: {avg * self.convert[unit]:.1f} {unit}')
+		print(f'Event resolution: {1/avg:.1f} Hz')
 
 def print_status(status: dict) -> None:
 	""" Print status in columns (debug purposes) """
