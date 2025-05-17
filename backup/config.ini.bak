@@ -5,6 +5,9 @@ histBins = 120
 log = 1
 plot = 0
 dformat = txt
+includeCounter = 1
+includeAmplitude = 1
+includePeakToPeak = 1
 
 [trigger]
 target = A
