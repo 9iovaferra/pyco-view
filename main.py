@@ -7,21 +7,20 @@ from tkinter.filedialog import asksaveasfilename
 from tkinter.ttk import (
 		Label, Frame, Labelframe, Button, Combobox, OptionMenu, Notebook
 		)
-from pycoviewlib.functions import parse_config, key_from_value, get_timeinterval
+from pycoviewlib.functions import parse_config, key_from_value, get_timeinterval, log
 from pycoviewlib.constants import *
 from pycoviewlib.gui_resources import *
 from pycoviewlib.tkSliderWidget.tkSliderWidget import Slider
-from adc import ADC
-from tdc import TDC
-from mntm import Meantimer
+import adc, tdc, mntm
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from threading import Thread, Event
 from queue import Queue
-from os import system, listdir, remove
+from os import system
+from datetime import datetime
 from pathlib import Path
-from typing import Union
+from typing import Union, Optional
 from webbrowser import open_new
 
 def placeholder():
@@ -102,7 +101,7 @@ class ChannelSettings():
 	def __init__(self, parent: Notebook, id: str, column: int):
 		self.id = id
 		self.frame = Labelframe(parent, text=f'Channel {id}')
-		self.frame.grid(column=column, row=0, **lbf_asym_padding, sticky='new')
+		self.frame.grid(column=column, row=0, **lbf_asym_padding, sticky='nw')
 
 		settings[f'ch{id}enabled'] = IntVar(value=params[f'ch{id}enabled'])
 		self.enabled = Checkbutton(
@@ -114,7 +113,7 @@ class ChannelSettings():
 				)
 		self.enabled.grid(column=0, row=0, pady=(THIN_PAD, 0), sticky='nw')
 
-		Label(self.frame, text='Range (±mV)').grid(column=0, row=1, **lbf_contents_padding, sticky='nw') 
+		Label(self.frame, text='Range (±mV)').grid(column=0, row=1, **lbf_contents_padding, sticky='nw')
 		settings[f'ch{id}range'] = IntVar(value=chInputRanges[params[f'ch{id}range']])
 		self.chRange = Combobox(
 				self.frame,
@@ -160,44 +159,28 @@ class ChannelSettings():
 		self.bandwidth.grid(column=0, row=8, padx=THIN_PAD, sticky='nw')
 
 class Histogram():
-	def __init__(self, parent: Labelframe, xlim: list[int], ylim: list[int], bins: int, mode: str = ''):
+	def __init__(
+			self,
+			parent: Labelframe,
+			xlim: list[int],
+			bins: int,
+			ylim: list[int] = None,
+			mode: Optional[str] = ''
+			):
 		self.parent = parent
-		self.fig, self.ax = plt.subplots(figsize=(6, 4), layout='tight')
-		self.xlim = xlim
-		self.ylim = ylim
-		self.bins = bins
-		self.buffer = []
+		self.root = None
 		self.mode = mode
+		self.buffer = []
+		self.follower = None
+		self.fig, self.ax = plt.subplots(figsize=(6, 4), layout='tight')
+		self.bins = bins
+		self.xlim = xlim
+		self.ylim = ylim if ylim is not None else [0, 15]
 		self.canvas = FigureCanvasTkAgg(self.fig, master=self.parent)
 		self.canvas.get_tk_widget().grid(column=0, row=0, padx=THIN_PAD, pady=THIN_PAD, sticky='nesw')
 		self.stop_event = Event()
-		self.stopped = True
+		self.stop_event.set()
 		self.queue = Queue(maxsize=100)
-
-	def start(self, root: Tk):
-		"""
-		Creates follower thread, attempts to setup communication with PicoScope,
-		exits if unsuccessful, starts thread otherwise
-		"""
-		pvStatus.set(f'Starting {key_from_value(modes, self.mode)}...')
-		self.root = root
-		self.cleanup()  # Scrape canvas & buffer if restarting
-		self.follower = Thread(target=self.follow)
-		match self.mode:
-			case 'adc':
-				self.applet = ADC(params)
-			case 'tdc':
-				self.applet = TDC(params)
-			case 'mntm':
-				self.applet = Meantimer(params)
-		err = self.applet.setup()
-		if err is not None:
-			pvStatus.set(f'(!) {err}')
-			return
-		self.stopped = False
-		self.stop_event.clear()
-		self.follower.start()
-		self.root.protocol('WM_DELETE_WINDOW', self.kill)
 
 	def create(self, bounds: tuple[int, int] = None, bins: int = None) -> None:
 		"""
@@ -213,13 +196,18 @@ class Histogram():
 			update_setting(['histBounds'], [f'{int(bounds[0])},{int(bounds[1])}'])
 		else:
 			self.ax.set_xlim(self.xlim)
+
 		if not self.ax.patches:  # Only update ylim if histogram is empty
 			self.ax.set_ylim(self.ylim)
 			yticks = range(0, int(self.ax.get_ylim()[1]) + 5, 5)
 			self.ax.set_yticks(ticks=list(yticks), labels=[f'{lbl}' for lbl in yticks])
-		if (self.xlim[1] - self.xlim[0]) == 200:
+		if self.stop_event.is_set() and self.ax.patches:  # Readjust bins after run
+			_ = [bar.remove() for bar in self.ax.patches]
+			new_counts, new_bins = np.histogram(self.buffer, range=self.xlim, bins=self.bins)
+			self.ax.stairs(new_counts, new_bins, fill=True, color=HIST_COLOR, zorder=3)
+		if (self.xlim[1] - self.xlim[0]) >= 200:
 			xticks = range(int(self.xlim[0]), int(self.xlim[1]) + 20, 20)
-		elif (self.xlim[1] - self.xlim[0]) >= 100:
+		elif (self.xlim[1] - self.xlim[0]) in range(100, 200):
 			xticks = range(int(self.xlim[0]), int(self.xlim[1]) + 10, 10)
 		else:
 			xticks = range(int(self.xlim[0]), int(self.xlim[1]) + 5, 5)
@@ -229,10 +217,6 @@ class Histogram():
 		if bins is not None and bins != self.bins:
 			self.bins = bins
 			update_setting(['histBins'], [bins])
-			# if self.ax.patches:  # Readjust bins if histogram has data
-			# 	_ = [bar.remove() for bar in self.ax.patches]
-			# 	counts, bins = np.histogram(self.buffer, range=self.xlim, bins=self.bins)
-			# 	self.ax.stairs(counts, bins, fill=True, color='tab:blue', zorder=3)
 
 		self.canvas.draw()
 
@@ -243,39 +227,80 @@ class Histogram():
 				)
 		plt.savefig(figureSavePath)
 
-	def follow(self) -> None:
+	def start(self, root: Tk, max_timeouts: int):
+		"""
+		Creates follower thread, attempts to setup communication with PicoScope,
+		exits if unsuccessful, starts thread otherwise
+		"""
+		pvStatus.set(f'Starting {key_from_value(modes, self.mode)}...')
+		self.root = root
+		self.root.update_idletasks()
+		self.cleanup()  # Scrape canvas & buffer if restarting
+		self.follower = Thread(target=self.follow, args=[max_timeouts])
+		match self.mode:
+			case 'adc':
+				self.applet = adc.ADC(params)
+			case 'tdc':
+				self.applet = tdc.TDC(params)
+			case 'mntm':
+				self.applet = mntm.Meantimer(params)
+		err = self.applet.setup()
+		if not all([e is None for e in err]):
+			pvStatus.set(f'(!) {e for e in err if e is not None}')
+			return
+		# timestamp: str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+		# if params['log']:  # Creating loghandle if required
+		# 	self.loghandle: str = f'{self.mode}_log_{timestamp}.txt'
+		# self.datahandle: str = f"{PV_DIR}/Data/{self.mode}_data_{timestamp}.{params['dformat']}"
+		self.stop_event.clear()
+		self.follower.start()
+		self.root.protocol('WM_DELETE_WINDOW', self.kill)
+
+	def follow(self, max_timeouts: int) -> None:
 		"""
 		Gets data by running the applet.
 		All tkinter commands must run in mainloop, so data is queued
 		to `place_on_canvas()` which is outside of follower thread.
 		"""
+		# """ Logging runtime parameters """
+		# if params['log']:
+		# 	log(self.loghandle, '==> Running acquisition with parameters:', time=True)
+		# 	col_width = max([len(k) for k in self.params.keys()])
+		# 	for key, value in self.params.items():
+		# 		log(self.loghandle, f'{key: <{col_width}} {value:}')
 		count = 1
+		self.timeout = max_timeouts
 		while not self.stop_event.is_set():
-			if len(self.queue.queue) < 100:
-				data, err = self.applet.run()
+			if self.timeout == 0:
+				pvStatus.set('Too many timeouts, please check your setup.')
+				self.stop_event.set()
+				err = self.applet.stop()
 				if err is not None:
 					pvStatus.set(f'(!) {err}')
-					break
-				elif data is None and not self.stop_event.is_set():
-					pvStatus.set(f'Capture #{count}... skipping (trigger timed out)')
-					continue
-				self.queue.put(data)
-			self.place_on_canvas(n=count)
+				break
+			data, err = self.applet.run()
+			if not all([e is None for e in err]):
+				pvStatus.set(f"(!) {','.join([e for e in err if e is not None])}")
+				self.stop_event.set()
+				continue
+			elif data is None:
+				pvStatus.set(
+					f'Capture #{count}... skipping (trigger timeout {max_timeouts - self.timeout + 1})'
+					)
+				self.timeout -= 1
+				continue
+			self.timeout = max_timeouts
+			self.queue.put((data, count))
+			self.place_on_canvas()
 			count += 1
 
-		self.applet.stop()
-		self.stop_event.clear()
-		self.stopped = True
-		pvStatus.set('Idle')
-
-	def place_on_canvas(self, n: int) -> None:
-		data = self.queue.get()
-		if self.ax.patches and n % 5 == 0:  # Only update every 5 counts
-			_ = [bar.remove() for bar in self.ax.patches]
-
+	def place_on_canvas(self) -> None:
+		data, count = self.queue.get()
 		self.buffer.append(data)
 
-		if n % 5 == 0:
+		if count % 5 == 0:  # Only update every 5 counts
+			if self.ax.patches:
+				_ = [bar.remove() for bar in self.ax.patches]
 			counts, bins = np.histogram(self.buffer, range=self.xlim, bins=self.bins)
 			self.ax.stairs(counts, bins, fill=True, color=HIST_COLOR, zorder=3)
 
@@ -301,30 +326,76 @@ class Histogram():
 			self.canvas.draw()
 
 		if not self.stop_event.is_set():
-			pvStatus.set(f'Capture #{n}')
+			pvStatus.set(f'Capture #{count}')
 		self.queue.task_done()
 
 	def cleanup(self) -> None:
 		if self.ax.patches:
 			_ = [bar.remove() for bar in self.ax.patches]
 			self.buffer = []
+			self.ax.set_ylim(self.ylim)  # Reset ylim
+			yticks = range(0, int(self.ax.get_ylim()[1]) + 5, 5)
+			self.ax.set_yticks(ticks=list(yticks), labels=[f'{lbl}' for lbl in yticks])
 			self.canvas.draw()
 
 	def stop(self) -> None:
-		if self.stopped:
+		if self.stop_event.is_set():
 			pvStatus.set('No process to stop.')
 			return
 		pvStatus.set('Stopping...')
+		self.root.update_idletasks()
 		self.stop_event.set()
+		if self.follower is not None:
+			self.follower.join(timeout=0.1)
+			self.follower = None
+		err = self.applet.stop()
+		pvStatus.set('Idle' if err is None and self.timeout != 0 else f'(!) {err}')
 
 	def kill(self) -> None:
 		self.stop()
-		all_clear = self.stopped
-		while not all_clear:
-			all_clear = self.stopped
-		self.root.after(500, print(f'{self.follower.is_alive()=}'))
 		self.root.quit()
 		self.root.destroy()
+
+def probe_pico(root: Tk, mode: str, max_timeouts: int) -> None:
+	pvStatus.set('Probing PicoScope...')
+	root.update_idletasks()
+
+	match mode:
+		case 'adc':
+			applet = adc.ADC(params, probe=True)
+		case 'tdc':
+			applet = tdc.TDC(params, probe=True)
+		case 'mntm':
+			applet = mntm.Meantimer(params, probe=True)
+	err = applet.setup()
+	if not all([e is None for e in err]):
+		pvStatus.set(f"(!) {','.join([e for e in err if e is not None])}")
+		return
+	figure = None
+	timeout = max_timeouts
+	while figure is None:
+		if timeout == 0:
+			pvStatus.set('Too many timeouts. Please check your setup.')
+			root.update_idletasks()
+			break
+		figure, err = applet.run()
+		if figure is None:
+			pvStatus.set(
+				f'Probing PicoScope... (trigger timeout {max_timeouts - timeout + 1})'
+				)
+			root.update_idletasks()
+		timeout -= 1
+	if not all([e is None for e in err]):
+		pvStatus.set(f"(!) {','.join([e for e in err if e is not None])}")
+	err = applet.stop()
+	if timeout != 0:
+		pvStatus.set('Idle' if err is None else f'(!) {err}')  # Doesn't overwrite max timeouts warning
+		probe_window = Toplevel()
+		probe_window.resizable(0, 0)
+		probe_window.title('Probe')
+		probe_canvas = FigureCanvasTkAgg(figure, master=probe_window)
+		probe_canvas.get_tk_widget().pack()
+
 
 def refresh_run_tab(event, tab: Frame) -> None:
 	if event.widget.tab('current')['text'] == 'Run':
@@ -408,7 +479,7 @@ def main() -> None:
 		pv_data_folder: Path = Path(f'{PV_DIR}/Data').expanduser()
 		pv_data_folder.mkdir(exist_ok=True)
 	except PermissionError:
-		print("Permission Error: cannot write to this location.")
+		print("(!) Cannot write to {pv_data_folder}!")
 		return
 
 	""" Main window & menu bar """
@@ -433,7 +504,7 @@ def main() -> None:
 
 	""" Run tab """
 	summary = Labelframe(runTab, text='Summary')
-	summary.grid(column=0, row=0, columnspan=2, **lbf_asym_padding, sticky='nesw')
+	summary.grid(column=0, row=0, columnspan=3, **lbf_asym_padding, sticky='nesw')
 
 	""" Summary labelframe contents.
 	'summary_textvar' is a container of 'StringVar' or 'IntVar' objects used to update the UI
@@ -448,6 +519,7 @@ def main() -> None:
 			'thresholdmV': StringVar(value=f"{params['thresholdmV']:.0f} mV"),
 			'delaySeconds': StringVar(value=f"{params['delaySeconds']} s"),
 			'autoTrigms': StringVar(value=f"{params['autoTrigms']} ms"),
+			'maxTimeouts': StringVar(value=f"{params['maxTimeouts']}"),
 			'preTrigSamples': StringVar(value=f"{params['preTrigSamples']}"),
 			'postTrigSamples': StringVar(value=f"{params['postTrigSamples']}")
 			}
@@ -475,7 +547,7 @@ def main() -> None:
 				column=i + 1, row=4, padx=0 if i == 0 else (THIN_PAD,0), pady=(LINE_PAD,0), sticky='e'
 				)
 
-	h_separator(summary, row=5, columnspan=5)
+	HSeparator(summary, row=5, columnspan=5)
 
 	Label(summary, text='Timebase').grid(column=0, row=6, padx=(THIN_PAD,0), pady=(WIDE_PAD,0), sticky='w')
 	Label(summary, textvariable=summary_textvar['timebase'], anchor='e').grid(
@@ -493,48 +565,67 @@ def main() -> None:
 	Label(summary, textvariable=summary_textvar['autoTrigms'], anchor='e').grid(
 			column=1, row=9, columnspan=4, padx=0, pady=(LINE_PAD,0), sticky='ew'
 			)
-	Label(summary, text='Pre-trigger samples').grid(column=0, row=10, padx=(THIN_PAD,0), pady=(LINE_PAD,0), sticky='w')
-	Label(summary, textvariable=summary_textvar['preTrigSamples'], anchor='e').grid(
+	Label(summary, text='Max. timeouts').grid(column=0, row=10, padx=(THIN_PAD,0), pady=(LINE_PAD,0), sticky='w')
+	Label(summary, textvariable=summary_textvar['maxTimeouts'], anchor='e').grid(
 			column=1, row=10, columnspan=4, padx=0, pady=(LINE_PAD,0), sticky='ew'
 			)
-	Label(summary, text='Post-trigger samples').grid(column=0, row=11, padx=(THIN_PAD,0), pady=(LINE_PAD,0), sticky='w')
-	Label(summary, textvariable=summary_textvar['postTrigSamples'], anchor='e').grid(
+	Label(summary, text='Pre-trigger samples').grid(column=0, row=11, padx=(THIN_PAD,0), pady=(LINE_PAD,0), sticky='w')
+	Label(summary, textvariable=summary_textvar['preTrigSamples'], anchor='e').grid(
 			column=1, row=11, columnspan=4, padx=0, pady=(LINE_PAD,0), sticky='ew'
 			)
+	Label(summary, text='Post-trigger samples').grid(column=0, row=12, padx=(THIN_PAD,0), pady=(LINE_PAD,0), sticky='w')
+	Label(summary, textvariable=summary_textvar['postTrigSamples'], anchor='e').grid(
+			column=1, row=12, columnspan=4, padx=0, pady=(LINE_PAD,0), sticky='ew'
+			)
 
-	h_separator(summary, row=12, columnspan=5)
+	HSeparator(summary, row=13, columnspan=5)
 
 	logFlag = IntVar(value=params['log'])
 	logCheckBox = Checkbutton(
 			summary, variable=logFlag, text='Log acquisition',
 			onvalue=1, offvalue=0, command=lambda: update_setting(['log'], [logFlag.get()])
 			)
-	logCheckBox.grid(column=0, row=13, columnspan=4, pady=(WIDE_PAD, 0), sticky='sw')
-	plotFlag = IntVar(value=params['plot'])
-	plotCheckBox = Checkbutton(
-			summary, variable=plotFlag, text='Export figure for each capture',
-			onvalue=1, offvalue=0, command=lambda: update_setting(['plot'], [plotFlag.get()])
-			)
-	plotCheckBox.grid(column=0, row=14, columnspan=4, pady=(LINE_PAD, WIDE_PAD), sticky='ws')
+	logCheckBox.grid(column=0, row=14, columnspan=4, pady=(WIDE_PAD, 0), sticky='sw')
 
 	""" Histogram """
 	histogramLbf = Labelframe(runTab, text='Histogram')
-	histogramLbf.grid(column=2, row=0, columnspan=6, rowspan=2, **hist_padding, sticky='nesw')
+	histogramLbf.grid(column=3, row=0, columnspan=6, rowspan=2, **hist_padding, sticky='nesw')
 
-	Label(runTab, text='Bounds:', anchor='w').grid(column=2, row=2, padx=(THIN_PAD, 0), pady=(WIDE_PAD, 0), sticky='n')
+	Label(runTab, text='Bounds:', anchor='w').grid(column=3, row=2, padx=(THIN_PAD, 0), pady=(WIDE_PAD, 0), sticky='n')
 	histBounds = Slider(
-			runTab, width=220, height=40, min_val=-100, max_val=100, init_lis=params['histBounds'],
+			runTab, width=220, height=40, min_val=-100, max_val=200, init_lis=params['histBounds'],
 			step_size=5, show_value=True, removable=False, addable=False
 			)
-	histBounds.grid(column=3, row=2, pady=(THIN_PAD, 0), sticky='n')
-	Label(runTab, text='Bins:', anchor='center').grid(column=4, row=2, padx=0, pady=WIDE_PAD, sticky='n')
+	histBounds.grid(column=4, row=2, pady=(THIN_PAD, 0), sticky='n')
+	Label(runTab, text='Bins:', anchor='center').grid(column=5, row=2, padx=0, pady=WIDE_PAD, sticky='n')
 	histBinsVar = IntVar(value=params['histBins'])
-	binsSpbx = Spinbox(runTab, from_=50, to=200, textvariable=histBinsVar, width=5, increment=10)
-	binsSpbx.grid(column=5, row=2, padx=(MED_PAD, 0), pady=(WIDE_PAD, 0), sticky='nw')
 
-	histogram = Histogram(
-			parent=histogramLbf, xlim=histBounds.get(), ylim=[0, 15], bins=histBinsVar.get()
-			)
+	def validate(entry: str) -> bool:
+		valid: bool = entry == '' or entry.isdigit()
+		return valid
+
+	def assert_entry_ok(widget, valid_range: tuple[int, int]) -> None:
+		if int(widget.get()) < valid_range[0]:
+			widget.delete(0, 'end')
+			widget.insert(0, str(valid_range[0]))
+		elif int(widget.get()) > valid_range[1]:
+			widget.delete(0, 'end')
+			widget.insert(0, str(valid_range[1]))
+
+	binsSpbx = Spinbox(
+		runTab,
+		from_=50,
+		to=200,
+		textvariable=histBinsVar,
+		width=5,
+		increment=10,
+		validate='key',
+		validatecommand=(root.register(validate), '%P')
+		)
+	binsSpbx.grid(column=6, row=2, padx=(MED_PAD, 0), pady=(WIDE_PAD, 0), sticky='nw')
+	binsSpbx.bind('<FocusOut>', lambda _: assert_entry_ok(binsSpbx, (50, 200)))
+
+	histogram = Histogram(parent=histogramLbf, xlim=histBounds.get(), bins=histBinsVar.get())
 
 	Label(topFrame, text='Mode:').grid(column=0, row=0, sticky='w')
 	modeVar = StringVar(value=key_from_value(modes, params['mode']))
@@ -556,20 +647,27 @@ def main() -> None:
 			width=9,
 			command=lambda: histogram.create(histBounds.get(), histBinsVar.get())
 			)
-	histApplyBtn.grid(column=6, row=2, padx=(THIN_PAD, 0), pady=(WIDE_PAD, 0), ipady=THIN_PAD, sticky='ne')
+	histApplyBtn.grid(column=7, row=2, padx=(THIN_PAD, 0), pady=(WIDE_PAD, 0), ipady=THIN_PAD, sticky='ne')
 	histSaveBtn = Button(runTab, text='Save as...', width=9, command=histogram.save)
-	histSaveBtn.grid(column=7, row=2, padx=0, pady=(WIDE_PAD, 0), ipady=THIN_PAD, sticky='ne')
+	histSaveBtn.grid(column=8, row=2, padx=0, pady=(WIDE_PAD, 0), ipady=THIN_PAD, sticky='ne')
 
 	""" Start/Stop job buttons """
-	# job = Job(root=root, applet=modes[modeVar.get()], hist=histogram)
-	startButton = Button(runTab, text='START', command=lambda: histogram.start(root=root))
+	global settings
+	settings = {
+			'target': StringVar(value=''.join(params['target'])),
+			'maxTimeouts': IntVar(value=params['maxTimeouts'])
+			}
+
+	startButton = Button(runTab, text='START', command=lambda: histogram.start(root=root, max_timeouts=params['maxTimeouts']))
 	startButton.grid(column=0, row=1, padx=(WIDE_PAD,0), pady=0, ipadx=THIN_PAD, ipady=THIN_PAD, sticky='esw')
 	stopButton = Button(runTab, text='STOP', command=histogram.stop)
 	stopButton.grid(column=1, row=1, padx=(WIDE_PAD,0), pady=0, ipadx=THIN_PAD, ipady=THIN_PAD, sticky='esw')
+	probeButton = Button(runTab, text='PROBE', command=lambda: probe_pico(root=root, mode=modes[modeVar.get()], max_timeouts=params['maxTimeouts']))
+	probeButton.grid(column=2, row=1, padx=(WIDE_PAD,0), pady=0, ipadx=THIN_PAD, ipady=THIN_PAD, sticky='esw')
 
 	""" Status textbox """
 	statusFrame = Frame(runTab)
-	statusFrame.grid(column=0, row=2, columnspan=2, padx=(WIDE_PAD, 0), pady=(WIDE_PAD, 0), sticky='nesw')
+	statusFrame.grid(column=0, row=2, columnspan=3, padx=(WIDE_PAD, 0), pady=(WIDE_PAD, 0), sticky='nesw')
 	Label(statusFrame, text='Status:').grid(column=0, row=0, sticky='sw')
 	global pvStatus
 	pvStatus = StringVar(runTab, value='Idle')
@@ -577,9 +675,6 @@ def main() -> None:
 
 	""" Settings tab. The 'settings' dictionary will temporarily store all the changes until
 	the 'Apply' button is clicked, when such changes will be written to the config.ini file. """
-	global settings
-	settings = {}
-
 	""" Trigger settings """
 	def target_selection(flags: list[StringVar], targets: StringVar) -> None:
 		targets.set(flags[0].get() + flags[1].get() + flags[2].get() + flags[3].get())
@@ -588,7 +683,6 @@ def main() -> None:
 	trigSettingsLbf.grid(column=0, row=0, rowspan=2, **lbf_asym_padding, sticky='new')
 
 	Label(trigSettingsLbf, text='Target(s)').grid(column=0, row=0, columnspan=2, **lbf_contents_padding, sticky='nw') 
-	settings['target'] = StringVar(value=''.join(params['target']))
 	targetFlags = [StringVar(value='') for _ in range(4)]
 	targetAChbx = Checkbutton(
 			trigSettingsLbf,
@@ -700,6 +794,17 @@ def main() -> None:
 			)
 	delaySpbx.grid(column=0, row=14, columnspan=2, padx=lbf_contents_padding['padx'], sticky='nw')
 
+	Label(trigSettingsLbf, text='Max. timeouts').grid(column=0, row=15, columnspan=2, **lbf_contents_padding, sticky='nw')
+	maxTimeouts = Spinbox(
+			trigSettingsLbf,
+			from_=3,
+			to=10,
+			textvariable=settings['maxTimeouts'],
+			width=7,
+			increment=1
+			)
+	maxTimeouts.grid(column=0, row=16, columnspan=2, padx=lbf_contents_padding['padx'], sticky='nw')
+
 	""" Channels settings """
 	chASettings = ChannelSettings(settingsTab, id='A', column=1)
 	chBSettings = ChannelSettings(settingsTab, id='B', column=2)
@@ -708,17 +813,33 @@ def main() -> None:
 
 	""" File settings """
 	fileSettings = TabLabelframe(
-			settingsTab, title='File settings', col=1, row=1, size=(3, 4), cspan=4, padding=lbf_asym_padding_no_top
-			)
+		settingsTab, title='Data file', col=1, row=1, size=(3, 4), cspan=4, padding=lbf_asym_padding_no_top
+		)
 	fileSettings.add_optionmenu(
-			id='dataFileType', prompt='Save data as:', vtype='str', options=dataFileTypes
-			)
+		id='dataFileType', prompt='Save data as:', default=params['dformat'], options=dataFileTypes
+		)
 	settings['dformat'] = fileSettings.get_raw('dataFileType')
+	fileSettings.add_checkbutton(
+		id='count', prompt='Counter', default=params['includeCounter'], on_off=(1, 0)
+		)
+	settings['includeCounter'] = fileSettings.get_raw('count')
+	fileSettings.add_checkbutton(
+		id='amplitude', prompt='Amplitude', default=params['includeAmplitude'], on_off=(1, 0)
+		)
+	settings['includeAmplitude'] = fileSettings.get_raw('amplitude')
+	fileSettings.add_checkbutton(
+		id='peakToPeak', prompt='Peak-to-peak', default=params['includePeakToPeak'], on_off=(1, 0)
+		)
+	settings['includePeakToPeak'] = fileSettings.get_raw('peakToPeak')
+	fileSettings.add_spinbox(
+		id='test', from_to=(15.0, 20.0), step=.5
+		)
+	fileSettings.add_combobox(id='Test 2', options=[1, 2, 3, 4], default=3, prompt='Test 2')
 
 	""" Apply settings button """
 	applySettingsBtn = Button(
-			settingsTab, text='Apply', takefocus=False, command=lambda: apply_changes(settings, applySettingsBtn)
-			)
+		settingsTab, text='Apply', takefocus=False, command=lambda: apply_changes(settings, applySettingsBtn)
+		)
 	applySettingsBtn.state(['disabled'])  # Will only be enabled if a setting is changed
 	applySettingsBtn.grid(column=4, row=2, padx=0, pady=0, ipadx=THIN_PAD, ipady=THIN_PAD, sticky='e')
 
