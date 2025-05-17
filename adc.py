@@ -6,6 +6,7 @@ from picosdk.errors import PicoSDKCtypesError
 from picosdk.constants import PICO_STATUS_LOOKUP
 from pycoviewlib.functions import (
 		mV2adc, detect_gate_open_closed, calculate_charge, log, key_from_value,
+		format_data
 		)
 from pycoviewlib.constants import PV_DIR, maxADC, chInputRanges, couplings, channelIDs
 import matplotlib.pyplot as plt
@@ -14,89 +15,76 @@ from datetime import datetime
 from typing import Union
 
 def plot_data(
-		bufferChAmV: Array[c_int16],
-		bufferChCmV: Array[c_int16],
+		bufferGate: Array[c_int16],
+		bufferSignal: Array[c_int16],
 		gate: dict,
 		time: np.ndarray,
 		timeIntervalns: float,
 		charge: float,
 		peakToPeak: float,
-		filestamp: str,
-		n: int
+		title: str,
 		) -> None:
-	yLowerLim = min(bufferChAmV) + min(bufferChAmV) * 0.1
-	yUpperLim = max(bufferChAmV) + max(bufferChAmV) * 0.3
-	# yTicks = np.arange(-1000, 0, 50)
+	maxSignal = max(bufferSignal)
+	yLowerLim = min(min(bufferGate), min(bufferSignal)) * 1.1
+	yUpperLim = max(abs(max(bufferGate)), abs(maxSignal)) * 1.3
 
-	if n == 1:
-		print("New plot!")
-		plt.figure(figsize=(10, 6))
-		plt.grid()
-		plt.xlabel('Time (ns)')
-		plt.ylim(yLowerLim, yUpperLim)
-		plt.ylabel('Voltage (mV)')
-
-	# fig, ax = plt.subplots(figsize=(10,6))
-	# ax.grid()
+	fig, ax = plt.subplots(figsize=(10, 6), layout='tight')
+	ax.grid()
+	ax.set_ylim(yLowerLim, yUpperLim)
+	ax.set_xlabel('Time (ns)')
+	ax.set_ylabel('Voltage (mV)')
 
 	""" Channel signals """
-	plt.plot(time, bufferChAmV[:], color="blue", label="Channel A (gate)")
-	plt.plot(time, bufferChCmV[:], color="green", label="Channel C (detector signal)")
+	ax.plot(time, bufferGate[:], color='blue', label='Channel A (gate)')
+	ax.plot(time, bufferSignal[:], color='green', label='Channel C (detector signal)')
 
 	""" Charge area + bounds from gate """
-	fillY = bufferChCmV[gate["open"]["index"]:gate["closed"]["index"]]
-	fillX = np.linspace(gate["open"]["ns"], gate["closed"]["ns"], num=len(fillY))
-	plt.fill_between(
-		fillX, fillY, color="lightgrey", label=f"Total deposited charge\n{charge:.2f} pC"
+	fillY = bufferSignal[gate['open']['index']:gate['closed']['index']]
+	fillX = np.linspace(gate['open']['ns'], gate['closed']['ns'], num=len(fillY))
+	ax.fill_between(
+		fillX, fillY, color='lightgrey', label=f'Total deposited charge\n{charge:.2f} pC'
 		)
-	plt.plot(
-		[gate["open"]["ns"]] * 2, [gate["open"]["mV"], max(bufferChCmV)],
-		linestyle="--", color="black"
+	ax.plot(
+		[gate['open']['ns']] * 2, [gate['open']['mV'], maxSignal],
+		linestyle='--', color='black'
 		)
-	plt.plot(
-		[gate["closed"]["ns"]] * 2, [gate["closed"]["mV"], max(bufferChCmV)],
-		linestyle="--", color="black"
+	ax.plot(
+		[gate['closed']['ns']] * 2, [gate['closed']['mV'], maxSignal],
+		linestyle='--', color='black'
 		)
-
-	# """ Threshold """
-	# plt.plt.line(
-	# 	y=thresholdmV, linestyle="--", color="black",
-	# 	label=f"Channel A threshold\n{thresholdmV:.2f} mV"
-	# 	)
 
 	""" Gate open and closed points """
-	plt.plot(
-		gate["open"]["ns"], gate["open"]["mV"],
+	ax.plot(
+		gate['open']['ns'], gate['open']['mV'],
 		color="black", marker=">", label=f"Gate open\n{gate['open']['ns']:.2f} ns"
 		)
-	plt.plot(
-		gate["closed"]["ns"], gate["closed"]["mV"],
+	ax.plot(
+		gate['closed']['ns'], gate['closed']['mV'],
 		color="black", marker="<", label=f"Gate closed\n{gate['closed']['ns']:.2f} ns"
 		)
 
 	""" Amplitude and Peak-To-Peak """
-	p2p_artist = [None, None]
-	p2p_artist[0] = plt.annotate(
-			"",
-			xy=(time[bufferChCmV.index(max(bufferChCmV))], max(bufferChCmV)),
-			xytext=(time[bufferChCmV.index(max(bufferChCmV))], peakToPeak * (-1)),
+	ax.annotate(
+			'',
+			xy=(time[bufferSignal.index(maxSignal)], maxSignal),
+			xytext=(time[bufferSignal.index(maxSignal)], min(bufferSignal)),
 			fontsize=12,
-			arrowprops=dict(edgecolor="black", arrowstyle="<->", shrinkA=0, shrinkB=0)
+			arrowprops=dict(edgecolor='black', arrowstyle='<->', shrinkA=0, shrinkB=0)
 			)
-	p2p_artist[1] = plt.text(
-			time[bufferChCmV.index(max(bufferChCmV))] + 0.5,
-			max(bufferChCmV) - peakToPeak / 2, f"Peak-to-peak\n{peakToPeak:.2f} mV")
+	ax.text(
+			time[bufferSignal.index(maxSignal)] + 0.5,
+			maxSignal - peakToPeak / 2, f'Peak-to-peak\n{peakToPeak:.2f} mV')
 
-	plt.title(f"adc_plot_{filestamp}")
-	plt.legend(loc="lower right")
-	plt.savefig(f"./Data/adc_plot_{filestamp}.png")
-	for artist in plt.gca().lines + plt.gca().collections + p2p_artist:
-		artist.remove()
+	ax.set_title(title)
+	ax.legend(loc='lower right')
+
+	return fig
 
 
 class ADC:
-	def __init__(self, params: dict[str, Union[int, float, str]]):
+	def __init__(self, params: dict[str, Union[int, float, str]], probe: bool = False):
 		self.params = params
+		self.probe = probe
 		self.timestamp: str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 		if self.params['log']:  # Creating loghandle if required
 			self.loghandle: str = f'adc_log_{self.timestamp}.txt'
@@ -137,22 +125,30 @@ class ADC:
 			return f'{PICO_STATUS_LOOKUP[status]}'
 		return None
 
-	def setup(self) -> str | None:
+	def setup(self) -> list[str] | None:
+		err = []
 		""" Logging runtime parameters """
-		if self.params['log']:
+		if self.params['log'] and not self.probe:
 			log(self.loghandle, '==> Running acquisition with parameters:', time=True)
 			col_width = max([len(k) for k in self.params.keys()])
 			for key, value in self.params.items():
 				log(self.loghandle, f'{key: <{col_width}} {value:}')
 
-		with open(self.datahandle, 'a') as out:  # Creating data output file
-			out.write('n\t\tamplitude (mV)\tpeak2peak (mV)\tcharge (pC)\n')
+		if not self.probe:
+			header = []
+			if self.params['includeCounter']:
+				header.append('n')
+			if self.params['includeAmplitude']:
+				header.append('amplitude (mV)')
+			if self.params['includePeakToPeak']:
+				header.append('peak2peak (mV)')
+			header.append('charge (pC)')
+			with open(self.datahandle, 'a') as out:  # Creating data output file
+				out.write(format_data(header, self.params['dformat']))
 
 		""" Opening ps6000 connection: returns handle for future use in API functions """
 		self.status['openUnit'] = ps.ps6000OpenUnit(byref(self.chandle), None)
-		err = err = self.__check_health(self.status['openUnit'])
-		if err is not None:
-			return err
+		err.append(self.__check_health(self.status['openUnit']))
 
 		""" Setting up channels according to `params`
 		ps.ps6000SetChannel(
@@ -174,9 +170,7 @@ class ADC:
 					self.params[f'ch{name}analogOffset'],
 					self.params[f'ch{name}bandwidth']
 					)
-			err = self.__check_health(self.status[f'setCh{name}'])
-			if err is not None:
-				return err
+			err.append(self.__check_health(self.status[f'setCh{name}']))
 
 		""" Setting up simple trigger on target channel
 		ps.ps6000SetSimpleTrigger(
@@ -197,9 +191,7 @@ class ADC:
 				self.delaySeconds,
 				self.autoTrigms
 				)
-		err = self.__check_health(self.status['setSimpleTrigger'])
-		if err is not None:
-			return err
+		err.append(self.__check_health(self.status['setSimpleTrigger']))
 
 		""" Get timebase info & pre/post trigger samples to be collected
 		noSamples = maxSamples
@@ -215,16 +207,15 @@ class ADC:
 				self.chandle, self.timebase, self.maxSamples, byref(self.timeIntervalns), 1,
 				byref(self.returnedMaxSamples), 0
 				)
-		err = self.__check_health(self.status['getTimebase2'])
-		if err is not None:
-			return err
+		err.append(self.__check_health(self.status['getTimebase2']))
 
-		return None
+		return err
 
-	def run(self) -> tuple[float | None, str | None]:
+	def run(self) -> tuple[float | None, list[str] | None] | plt.Figure:
+		err = []
 		""" Logging capture """
-		if self.params['log']:
-			log(self.loghandle, f'==> Beginning capture no. {self.count}', time=True)
+		if self.params['log'] and not self.probe:
+			to_be_logged = [dict(entry=f'==> Beginning capture no. {self.count}', time=True)]
 
 		""" Run block capture
 		number of pre-trigger samples = preTrigSamples
@@ -240,15 +231,13 @@ class ADC:
 				self.chandle, self.preTrigSamples, self.postTrigSamples,
 				self.timebase, 0, None, 0, None, None
 				)
-		err = self.__check_health(self.status['runBlock'], stop=True)
-		if err is not None:
-			return None, err
+		err.append(self.__check_health(self.status['runBlock'], stop=True))
 
 		""" Check for data collection to finish using ps6000IsReady """
 		ready = c_int16(0)
 		check = c_int16(0)
 		while ready.value == check.value:
-			self.status['isReady'] = ps.ps6000IsReady(self.chandle, byref(ready))
+			ps.ps6000IsReady(self.chandle, byref(ready))
 
 		""" Create buffers ready for assigning pointers for data collection.
 		'bufferXMin' are generally used for downsampling but in our case they're equal
@@ -269,16 +258,12 @@ class ADC:
 		self.status['setDataBuffersA'] = ps.ps6000SetDataBuffers(
 				self.chandle, 0, byref(bufferAMax), byref(bufferAMin), self.maxSamples, 0
 				)
-		err = self.__check_health(self.status['setDataBuffersA'], stop=True)
-		if err is not None:
-			return None, err
+		err.append(self.__check_health(self.status['setDataBuffersA'], stop=True))
 
 		self.status['setDataBuffersC'] = ps.ps6000SetDataBuffers(
 				self.chandle, 2, byref(bufferCMax), byref(bufferCMin), self.maxSamples, 0
 				)
-		err = self.__check_health(self.status['setDataBuffersC'], stop=True)
-		if err is not None:
-			return None, err
+		err.append(self.__check_health(self.status['setDataBuffersC'], stop=True))
 
 		""" Retrieve data from scope to buffers assigned above.
 		start index = 0
@@ -290,9 +275,7 @@ class ADC:
 		self.status['getValues'] = ps.ps6000GetValues(
 				self.chandle, 0, byref(self.cmaxSamples), 1, 0, 0, byref(self.overflow)
 				)
-		err = self.__check_health(self.status['getValues'], stop=True)
-		if err is not None:
-			return None, err
+		err.append(self.__check_health(self.status['getValues'], stop=True))
 
 		""" Convert ADC counts data to mV """
 		bufferChAmV = adc2mV(bufferAMax, self.chRange, self.cmaxADC)
@@ -316,60 +299,77 @@ class ADC:
 				)
 		# Skip current acquisition if trigger timed out
 		if all([gopen['ns'] == 0.0 for gopen in gate.values()]):
-			if self.params['log']:
-				log(self.loghandle, 'Skipping (trigger timeout).')
-			return None, None
-		else:
-			""" Logging threshold hits """
-			if self.params['log']:
-				log(self.loghandle, f"gate on: {gate['open']['mV']:.2f}mV, \
-					{gate['open']['ns']:.2f}ns @ {gate['open']['index']}",)
-				log(self.loghandle, f"gate off: {gate['closed']['mV']:.2f}mV, \
-					{gate['closed']['ns']:.2f}ns @ {gate['closed']['index']}")
+			if self.params['log'] and not self.probe:
+				to_be_logged.append('Skipping (trigger timeout).')
+			return None, [None]
+		# else:
+		# 	""" Logging threshold hits """
+		# 	if self.params['log'] and not self.probe:
+		# 		log(self.loghandle, f"gate on: {gate['open']['mV']:.2f}mV, \
+		# 			{gate['open']['ns']:.2f}ns @ {gate['open']['index']}",)
+		# 		log(self.loghandle, f"gate off: {gate['closed']['mV']:.2f}mV, \
+		# 			{gate['closed']['ns']:.2f}ns @ {gate['closed']['index']}")
 
-		""" Calculating relevant data. Creating pickle file for use in `main.py` """
-		amplitude = abs(min(bufferChCmV))
-		peakToPeak = abs(min(bufferChCmV)) - abs(max(bufferChCmV))
+		""" Calculating relevant data """
+		data = []
+		if self.params['includeCounter']:
+			data.append(self.count)
+		if self.params['includeAmplitude'] or self.probe:
+			amplitude = abs(min(bufferChCmV))
+			data.append(amplitude)
+		if self.params['includePeakToPeak'] or self.probe:
+			peakToPeak = abs(min(bufferChCmV)) - abs(max(bufferChCmV))
+			data.append(peakToPeak)
 		charge = calculate_charge(
 				bufferChCmV, (gate['open']['index'], gate['closed']['index']),
 				self.timeIntervalns.value, self.coupling
 				)
+		data.append(charge)
 
 		""" Logging capture results """
-		if self.params['log']:
-			log(self.loghandle, f'amplitude: {amplitude:.2f}mV')
-			log(self.loghandle, f'peak-to-peak: {peakToPeak:.2f}mV')
-			log(self.loghandle, f'charge: {charge:.2f}pC')
+		if self.params['log'] and not self.probe:
+			to_be_logged.append('Ok!')
+			for item in to_be_logged:
+				if isinstance(item, dict):
+					log(self.loghandle, **item)
+				else:
+					log(self.loghandle, item)
+
+		# """ Logging capture results """
+		# if self.params['log'] and not self.probe:
+		# 	if self.params['includeAmplitude']:
+		# 		log(self.loghandle, f'amplitude: {amplitude:.2f}mV')
+		# 	if self.params['includePeakToPeak']:
+		# 		log(self.loghandle, f'peak-to-peak: {peakToPeak:.2f}mV')
+		# 	log(self.loghandle, f'charge: {charge:.2f}pC')
 
 		""" Print data to file """
-		with open(self.datahandle, 'a') as out:
-			out.write(f'{self.count}\t{amplitude:.9f}\t{peakToPeak:.9f}\t{charge:.9f}\n')
-
-		# if params['plot']:
-		# 	plot_data(
-		# 			bufferChAmV, bufferChCmV, gate, time, timeIntervalns,
-		# 			charge, peakToPeak, f'{timestamp}_{str(capcount)}',
-		# 			n=capcount
-		# 			)
+		if not self.probe:
+			with open(self.datahandle, 'a') as out:
+				out.write(format_data(data, self.params['dformat']))
+		else:
+			figure = plot_data(
+				bufferChAmV, bufferChCmV, gate, time, self.timeIntervalns,
+				charge, peakToPeak, f'ADC Probe {self.timestamp}'
+				)
+			return figure, err
 
 		self.count += 1
-		# random_wait = round(np.random.random(), 2)
-		# sleep(2 * random_wait)
 
-		return charge, None
+		return charge, err
 
 	def stop(self) -> str | None:
 		""" Stop acquisition & close unit """
 		self.status['stop'] = ps.ps6000Stop(self.chandle)
 		err = self.__check_health(self.status['stop'])
+		ps.ps6000CloseUnit(self.chandle)
 		if err is not None:
-			if self.params['log']:
+			if self.params['log'] and not self.probe:
 				log(self.loghandle, f'==> Job finished with error: {err}', time=True)
 			return err
-		ps.ps6000CloseUnit(self.chandle)
 
 		""" Logging exit status & data location """
-		if self.params['log']:
+		if self.params['log'] and not self.probe:
 			log(self.loghandle, '==> Job finished without errors. Data saved to:', time=True)
 			log(self.loghandle, f'{self.datahandle}')
 

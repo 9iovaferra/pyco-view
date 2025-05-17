@@ -3,7 +3,7 @@ from picosdk.ps6000 import ps6000 as ps
 from picosdk.functions import adc2mV, assert_pico_ok
 from picosdk.errors import PicoSDKCtypesError
 from picosdk.constants import PICO_STATUS_LOOKUP
-from pycoviewlib.functions import log, detect_gate_open_closed, mV2adc
+from pycoviewlib.functions import log, detect_gate_open_closed, mV2adc, format_data
 from pycoviewlib.constants import (
 		PV_DIR, chInputRanges, maxADC, channelIDs, PS6000_CONDITION_TRUE, PS6000_CONDITION_DONT_CARE,
 		PS6000_BELOW, PS6000_NONE
@@ -21,43 +21,47 @@ def plot_data(
 		time: np.ndarray,
 		deltaT: float,
 		timeIntervalns: float,
-		filestamp: str,
+		title: str,
 		) -> None:
 	buffersMin = min(min(bufferChAmV), min(bufferChCmV))
 	buffersMax = max(max(bufferChAmV), max(bufferChCmV))
-	yLowerLim = buffersMin + buffersMin * 0.2
-	yUpperLim = buffersMax + buffersMax * 0.4
-	# yTicks = np.arange(-1000, 0, 50)
+	yLowerLim = buffersMin * 1.2
+	yUpperLim = buffersMax * 1.4
 
-	plt.figure(figsize=(10, 6))
+	fig, ax = plt.subplots(figsize=(10, 6), layout='tight')
+	ax.grid()
+	ax.set_xlabel('Time (ns)')
+	ax.set_ylabel('Voltage (mV)')
+	ax.set_xlim(0, int(max(time)))
+	ax.set_ylim(yLowerLim, yUpperLim)
 
 	""" Channel signals """
-	plt.plot(time, bufferChAmV[:], color="blue", label="Channel A (gate)")
-	plt.plot(time, bufferChCmV[:], color="green", label="Channel C (gate)")
+	ax.plot(time, bufferChAmV[:], color='blue', label='Channel A (gate)')
+	ax.plot(time, bufferChCmV[:], color='green', label='Channel C (gate)')
 
 	""" Bounds from gate """
-	plt.plot(
-		[gate["chA"]["open"]["ns"]] * 2, [gate["chA"]["open"]["mV"], yLowerLim],
-		linestyle="--", color="darkblue"
+	ax.plot(
+		[gate['chA']['open']['ns']] * 2, [gate['chA']['open']['mV'], yLowerLim],
+		linestyle='--', color='darkblue'
 		)
-	plt.plot(
-		[gate["chA"]["closed"]["ns"]] * 2, [gate["chA"]["closed"]["mV"], yLowerLim],
-		linestyle="--", color="darkblue"
+	ax.plot(
+		[gate['chA']['closed']['ns']] * 2, [gate['chA']['closed']['mV'], yLowerLim],
+		linestyle='--', color='darkblue'
 		)
 
-	plt.plot(
-		[gate["chC"]["open"]["ns"]] * 2, [gate["chC"]["open"]["mV"], yLowerLim],
-		linestyle="--", color="darkgreen"
+	ax.plot(
+		[gate['chC']['open']['ns']] * 2, [gate['chC']['open']['mV'], yLowerLim],
+		linestyle='--', color='darkgreen'
 		)
-	plt.plot(
-		[gate["chC"]["closed"]["ns"]] * 2, [gate["chC"]["closed"]["mV"], yLowerLim],
-		linestyle="--", color="darkgreen"
+	ax.plot(
+		[gate['chC']['closed']['ns']] * 2, [gate['chC']['closed']['mV'], yLowerLim],
+		linestyle='--', color='darkgreen'
 		)
 
 	plt.fill_between(
-			np.arange(gate["chA"]["open"]["ns"], gate["chC"]["open"]["ns"], timeIntervalns),
+			np.arange(gate['chA']['open']['ns'], gate['chC']['open']['ns'], timeIntervalns),
 			yLowerLim, yUpperLim,
-			color="lightgrey", label=f"Delay\n{deltaT:.2f} ns"
+			color='lightgrey', label=f'Delay\n{deltaT:.2f} ns'
 			)
 
 	# """ Threshold """
@@ -67,42 +71,41 @@ def plot_data(
 	# )
 
 	""" Gate open and closed points """
-	plt.plot(
-		gate["chA"]["open"]["ns"], gate["chA"]["open"]["mV"],
-		color="darkblue", marker=">",
+	ax.plot(
+		gate['chA']['open']['ns'], gate['chA']['open']['mV'],
+		color='darkblue', marker='>',
 		label=f"Gate A open\n{gate['chA']['open']['ns']:.2f} ns"
 		)
-	plt.plot(
-		gate["chA"]["closed"]["ns"], gate["chA"]["closed"]["mV"],
-		color="darkblue", marker="<",
+	ax.plot(
+		gate['chA']['closed']['ns'], gate['chA']['closed']['mV'],
+		color='darkblue', marker='<',
 		label=f"Gate A closed\n{gate['chA']['closed']['ns']:.2f} ns"
 		)
 
-	plt.plot(
-		gate["chC"]["open"]["ns"], gate["chC"]["open"]["mV"],
-		color="darkgreen", marker=">",
+	ax.plot(
+		gate['chC']['open']['ns'], gate['chC']['open']['mV'],
+		color='darkgreen', marker='>',
 		label=f"Gate C open\n{gate['chC']['open']['ns']:.2f} ns"
 		)
-	plt.plot(
-		gate["chC"]["closed"]["ns"], gate["chC"]["closed"]["mV"],
-		color="darkgreen", marker="<",
+	ax.plot(
+		gate['chC']['closed']['ns'], gate['chC']['closed']['mV'],
+		color='darkgreen', marker='<',
 		label=f"Gate C closed\n{gate['chC']['closed']['ns']:.2f} ns"
 		)
 
 	# """ Threshold line """
-	# plt.plot(time.tolist()[bufferChAmV.index(min(bufferChAmV))], min(bufferChAmV), "ko")
+	# ax.plot(time.tolist()[bufferChAmV.index(min(bufferChAmV))], min(bufferChAmV), "ko")
 
-	plt.xlabel('Time (ns)')
-	plt.ylabel('Voltage (mV)')
-	plt.xlim(0, int(max(time)))
-	plt.ylim(yLowerLim, yUpperLim)
-	plt.legend(loc="lower right")
-	plt.savefig(f"./Data/tdc_plot_{filestamp}.png")
+	ax.set_title(title)
+	plt.legend(loc='lower right')
+
+	return fig
 
 
 class TDC:
-	def __init__(self, params: dict[str, Union[int, float, str]]):
+	def __init__(self, params: dict[str, Union[int, float, str]], probe: bool = False):
 		self.params = params
+		self.probe = probe
 		self.timestamp: str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 		if self.params['log']:  # Creating loghandle if required
 			self.loghandle: str = f'tdc_log_{self.timestamp}.txt'
@@ -145,21 +148,25 @@ class TDC:
 		return None
 
 	def setup(self) -> str | None:
+		err = []
 		""" Logging runtime parameters """
-		if self.params['log']:
+		if self.params['log'] and not self.probe:
 			log(self.loghandle, '==> Running acquisition with parameters:', time=True)
 			col_width = max([len(k) for k in self.params.keys()])
 			for key, value in self.params.items():
 				log(self.loghandle, f'{key: <{col_width}} {value:}')
 
-		with open(self.datahandle, "a") as out:  # Creating data output file
-			out.write("n\t\tdeltaT (ns)\n")
+		if not self.probe:
+			header = []
+			if self.params['includeCounter']:
+				header.append('n')
+			header.append('deltaT (ns)')
+			with open(self.datahandle, "a") as out:  # Creating data output file
+				out.write(format_data(header, self.params['dformat']))
 
 		""" Opening ps6000 connection: returns handle for future use in API functions """
 		self.status['openUnit'] = ps.ps6000OpenUnit(byref(self.chandle), None)
-		err = err = self.__check_health(self.status['openUnit'])
-		if err is not None:
-			return err
+		err.append(self.__check_health(self.status['openUnit']))
 
 		""" Setting up channels according to `self.params`
 		ps.ps6000SetChannel(
@@ -181,9 +188,7 @@ class TDC:
 					self.params[f'ch{name}analogOffset'],
 					self.params[f'ch{name}bandwidth']
 					)
-			err = self.__check_health(self.status[f'setCh{name}'])
-			if err is not None:
-				return err
+			err.append(self.__check_health(self.status[f'setCh{name}']))
 
 		""" Setting up advanced trigger on target channels.
 		ps.ps6000SetTriggerChannelConditions(
@@ -215,9 +220,7 @@ class TDC:
 		self.status['setTriggerChConditions'] = ps.ps6000SetTriggerChannelConditions(
 				self.chandle, byref(triggerConditions), nTrigConditions
 				)
-		err = self.__check_health(self.status['setTriggerChConditions'])
-		if err is not None:
-			return err
+		err.append(self.__check_health(self.status['setTriggerChConditions']))
 
 		PropertiesArray = ps.PS6000_TRIGGER_CHANNEL_PROPERTIES * self.nTargets
 		properties = [ps.PS6000_TRIGGER_CHANNEL_PROPERTIES(
@@ -228,14 +231,10 @@ class TDC:
 		self.status['setTriggerChProperties'] = ps.ps6000SetTriggerChannelProperties(
 				self.chandle, byref(channelProperties), nChannelProperties, 0, self.autoTrigms
 				)
-		err = self.__check_health(self.status['setTriggerChProperties'])
-		if err is not None:
-			return err
+		err.append(self.__check_health(self.status['setTriggerChProperties']))
 
 		self.status['setTriggerDelay'] = ps.ps6000SetTriggerDelay(self.chandle, self.delaySeconds)
-		err = self.__check_health(self.status['setTriggerDelay'])
-		if err is not None:
-			return err
+		err.append(self.__check_health(self.status['setTriggerDelay']))
 
 		triggerDirections = [
 				PS6000_BELOW if id in self.target else PS6000_NONE for id in channelIDs
@@ -243,9 +242,7 @@ class TDC:
 		self.status['setTriggerChannelDirections'] = ps.ps6000SetTriggerChannelDirections(
 				self.chandle, *triggerDirections
 				)
-		err = self.__check_health(self.status['setTriggerChannelDirections'])
-		if err is not None:
-			return err
+		err.append(self.__check_health(self.status['setTriggerChannelDirections']))
 
 		""" Get params["timebase"] info & number of pre/post trigger samples to be collected
 		noSamples = params["maxSamples"]
@@ -261,21 +258,20 @@ class TDC:
 				self.chandle, self.timebase, self.maxSamples, byref(self.timeIntervalns), 1,
 				byref(self.returnedMaxSamples), 0
 				)
-		err = self.__check_health(self.status['getTimebase2'])
-		if err is not None:
-			return err
+		err.append(self.__check_health(self.status['getTimebase2']))
 
 		# """ Benchmarking """
 		# benchmark = Benchmark()
 		# benchmark = [0.0]
 		# benchmark[0] = get_time()
 
-		return None
+		return err
 
 	def run(self) -> tuple[float | None, str | None]:
+		err = []
 		""" Logging capture """
-		if self.params['log']:
-			log(self.loghandle, f'==> Beginning capture no. {self.count}', time=True)
+		if self.params['log'] and not self.probe:
+			to_be_logged = [dict(entry=f'==> Beginning capture no. {self.count}', time=True)]
 
 		""" Run block capture
 		number of pre-trigger samples = params["preTrigSamples"]
@@ -291,9 +287,7 @@ class TDC:
 				self.chandle, self.preTrigSamples, self.postTrigSamples,
 				self.timebase, 0, None, 0, None, None
 				)
-		err = self.__check_health(self.status['runBlock'], stop=True)
-		if err is not None:
-			return None, err
+		err.append(self.__check_health(self.status['runBlock'], stop=True))
 
 		""" Check for data collection to finish using ps6000IsReady """
 		ready = c_int16(0)
@@ -320,16 +314,12 @@ class TDC:
 		self.status['setDataBuffersA'] = ps.ps6000SetDataBuffers(
 				self.chandle, 0, byref(bufferAMax), byref(bufferAMin), self.maxSamples, 0
 				)
-		err = self.__check_health(self.status['setDataBuffersA'], stop=True)
-		if err is not None:
-			return None, err
+		err.append(self.__check_health(self.status['setDataBuffersA'], stop=True))
 
 		self.status['setDataBuffersC'] = ps.ps6000SetDataBuffers(
 				self.chandle, 2, byref(bufferCMax), byref(bufferCMin), self.maxSamples, 0
 				)
-		err = self.__check_health(self.status['setDataBuffersC'], stop=True)
-		if err is not None:
-			return None, err
+		err.append(self.__check_health(self.status['setDataBuffersC'], stop=True))
 
 		""" Retrieve data from scope to buffers assigned above.
 		start index = 0
@@ -341,9 +331,7 @@ class TDC:
 		self.status["getValues"] = ps.ps6000GetValues(
 				self.chandle, 0, byref(self.cmaxSamples), 1, 0, 0, byref(self.overflow)
 				)
-		err = self.__check_health(self.status['getValues'], stop=True)
-		if err is not None:
-			return None, err
+		err.append(self.__check_health(self.status['getValues'], stop=True))
 
 		""" Convert ADC counts data to mV """
 		bufferChAmV = adc2mV(bufferAMax, self.chRange, self.cmaxADC)
@@ -371,89 +359,64 @@ class TDC:
 				)
 		# Skip current acquisition if trigger timed out (all gates open at 0.0ns)
 		if all([g['open']['ns'] == 0.0 for g in gate.values()]):
-			if self.params['log']:
-				log(self.loghandle, 'Skipping (trigger timeout).')
-			return None, None
-		else:
-			if self.params['log']:
-				""" Logging threshold hits """
-				for g, id in zip(gate.values(), ['A', 'C']):
-					log(self.loghandle, f"gate {id} on: {g['open']['mV']:.2f}mV, \
-						{g['open']['ns']:.2f}ns @ {g['open']['index']}",)
-					log(self.loghandle, f"gate {id} off: {g['closed']['mV']:.2f}mV, \
-						{g['closed']['ns']:.2f}ns @ {g['closed']['index']}")
+			if self.params['log'] and not self.probe:
+				to_be_logged.append('Skipping (trigger timeout).')
+			return None, [None]
+		# else:
+		# 	if self.params['log'] and not self.probe:
+		# 		""" Logging threshold hits """
+		# 		for g, id in zip(gate.values(), ['A', 'C']):
+		# 			log(self.loghandle, f"gate {id} on: {g['open']['mV']:.2f}mV, \
+		# 				{g['open']['ns']:.2f}ns @ {g['open']['index']}",)
+		# 			log(self.loghandle, f"gate {id} off: {g['closed']['mV']:.2f}mV, \
+		# 				{g['closed']['ns']:.2f}ns @ {g['closed']['index']}")
 
 		""" Calculating relevant data """
+		data = []
+		if self.params['includeCounter']:
+			data.append(self.count)
 		deltaT = gate['chC']['open']['ns'] - gate['chA']['open']['ns']
+		data.append(deltaT)
 
-		""" Print data to file & plot if requested """
-		with open(self.datahandle, 'a') as out:
-			out.write(f'{self.count}\t{deltaT:.9f}\n')
+		if self.params['log'] and not self.probe:
+			to_be_logged.append('Ok!')
+			for item in to_be_logged:
+				if isinstance(item, dict):
+					log(self.loghandle, **item)
+				else:
+					log(self.loghandle, item)
 
-		# if params['plot']:
-		# 	plot_data(
-		# 			bufferChAmV, bufferChCmV, gate, time, deltaT,
-		# 			timeIntervalns.value, f'{timestamp}_{capcount}'
-		# 			)
-
-		# """ Updating live histogram """
-		# # data.append(delay_sim_interactive(value=deltaT, mu=15.808209, sigma=2.953978))
-		# data.append(deltaT)
-
-		# if capcount == 1:
-		# 	fig, ax = plt.subplots(figsize=(10, 6), layout='tight')
-		# 	ax.set_xlim(0, 80)
-		# 	ax.set_ylim(0, 15)
-		# 	ax.set_yticks(
-		# 			ticks=list(range(0, 15 + 5, 5)),
-		# 			labels=[f'{lbl}' for lbl in range(0, 15 + 5, 5)]
-		# 			)
-		# 	ax.set_xlabel('Delay (ns)')
-		# 	ax.set_ylabel('Counts')
-
-		# if ax.patches and capcount % 5 == 0:
-		# 	_ = [b.remove() for b in ax.patches]
-
-		# if capcount % 5 == 0:
-		# 	counts, bins = np.histogram(data, range=(0, 80), bins=100)
-		# 	ax.stairs(counts, bins, color='tab:blue', fill=True)
-		# 	yUpperLim = int(ax.get_ylim()[1])
-		# 	if np.max(counts) > yUpperLim * 0.95:
-		# 		if yUpperLim < 50:
-		# 			yLimNudge = 5
-		# 		elif yUpperLim in range(50, 100):
-		# 			yLimNudge = 10
-		# 		elif yUpperLim in range(100, 200):
-		# 			yLimNudge = 20
-		# 		elif yUpperLim >= 200:
-		# 			yLimNudge = 25
-		# 		ax.set_ylim(0, yUpperLim + yLimNudge)
-		# 		ax.set_yticks(
-		# 				ticks=list(range(0, yUpperLim + 2 * yLimNudge, yLimNudge)),
-		# 				labels=[f'{lbl}' for lbl in range(0, yUpperLim + 2 * yLimNudge, yLimNudge)]
-		# 				)
-		# 	plt.pause(0.0001)
+		""" Print data to file """
+		if not self.probe:
+			with open(self.datahandle, 'a') as out:
+				out.write(format_data(data, self.params['dformat']))
+		else:
+			figure = plot_data(
+				bufferChAmV, bufferChCmV, gate, time, deltaT,
+				self.timeIntervalns.value, f'TDC Probe {self.timestamp}'
+				)
+			return figure, err
 
 		self.count += 1
 		# benchmark.split()
 
-		return deltaT, None
+		return deltaT, err
 
 	def stop(self) -> str | None:
 		""" Stop acquisition & close unit """
 		self.status['stop'] = ps.ps6000Stop(self.chandle)
 		err = self.__check_health(self.status['stop'])
+		ps.ps6000CloseUnit(self.chandle)
 		if err is not None:
-			if self.params['log']:
+			if self.params['log'] and not self.probe:
 				log(self.loghandle, f'==> Job finished with error: {err}', time=True)
 			return err
-		ps.ps6000CloseUnit(self.chandle)
 
 		# """ Execution time benchmarking """
 		# benchmark.results()
 
 		""" Logging exit status & data location """
-		if self.params['log']:
+		if self.params['log'] and not self.probe:
 			log(self.loghandle, '==> Job finished without errors. Data saved to:', time=True)
 			log(self.loghandle, f'{self.datahandle}')
 
