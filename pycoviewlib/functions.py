@@ -8,11 +8,13 @@ from time import perf_counter
 from os import listdir
 from typing import Union
 
+
 def mV2adc(thresh: float, offset: float, range_: int) -> int:
 	""" Convert millivolts to ADC counts """
 	adcCounts = int((thresh + offset * 1000) / range_ * maxADC)
 
 	return adcCounts
+
 
 def parse_config() -> dict:
 	""" Parser for .ini file """
@@ -43,6 +45,7 @@ def parse_config() -> dict:
 
 	return params
 
+
 def parse_args(args: list) -> dict:
 	"""
 	Parse command line arguments.
@@ -64,6 +67,7 @@ def parse_args(args: list) -> dict:
 	options['livehist'] = True if 'live' in args else False
 
 	return options
+
 
 def detect_gate_open_closed(
 		buffer: Array[c_int16],
@@ -100,6 +104,7 @@ def detect_gate_open_closed(
 
 	return gateChX
 
+
 def calculate_charge(
 		buffer: Array[c_int16],
 		gate: tuple[int],
@@ -117,6 +122,13 @@ def calculate_charge(
 	charge *= (timeIntervalns / coupling)
 
 	return charge
+
+
+def format_data(data: list[str | int | float], filetype: str) -> str:
+	separator = '\t' if filetype == 'txt' else ','
+	dataString = separator.join(map(str, data)) + '\n'
+	return dataString
+
 
 def log(loghandle: str, entry: str, time=False) -> None:
 	""" Write to log file """
