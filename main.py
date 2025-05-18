@@ -679,131 +679,111 @@ def main() -> None:
 	def target_selection(flags: list[StringVar], targets: StringVar) -> None:
 		targets.set(flags[0].get() + flags[1].get() + flags[2].get() + flags[3].get())
 
-	trigSettingsLbf = Labelframe(settingsTab, text='Trigger')
-	trigSettingsLbf.grid(column=0, row=0, rowspan=2, **lbf_asym_padding, sticky='new')
-
-	Label(trigSettingsLbf, text='Target(s)').grid(column=0, row=0, columnspan=2, **lbf_contents_padding, sticky='nw') 
+	triggerSettings = PVLabelframe(settingsTab, title='Trigger', col=0, row=0, size=(2, 18), rspan=2)
 	targetFlags = [StringVar(value='') for _ in range(4)]
-	targetAChbx = Checkbutton(
-			trigSettingsLbf,
-			variable=targetFlags[0],
-			text='A',
-			onvalue='A',
-			offvalue='',
-			command=lambda: target_selection(targetFlags, settings['target'])
-			)
-	targetBChbx = Checkbutton(
-			trigSettingsLbf,
-			variable=targetFlags[1],
-			text='B',
-			onvalue='B',
-			offvalue='',
-			command=lambda: target_selection(targetFlags, settings['target'])
-			)
-	targetCChbx = Checkbutton(
-			trigSettingsLbf,
-			variable=targetFlags[2],
-			text='C',
-			onvalue='C',
-			offvalue='',
-			command=lambda: target_selection(targetFlags, settings['target'])
-			)
-	targetDChbx = Checkbutton(
-			trigSettingsLbf,
-			variable=targetFlags[3],
-			text='D',
-			onvalue='D',
-			offvalue='',
-			command=lambda: target_selection(targetFlags, settings['target'])
-			)
-	for i, c in enumerate([targetAChbx, targetBChbx, targetCChbx, targetDChbx]):
-		if channelIDs[i] in params['target']:
-			c.select()
-		c.grid(column=0 if i in (0, 2) else 1, row=1 if i in (0, 1) else 2,
-			padx=lbf_contents_padding['padx'], sticky='nw')
+	triggerSettings.add_checkbutton(
+		id='chAenabled',
+		prompt='A',
+		on_off=('A', ''),
+		default='A' if 'A' in settings['target'].get() else '',
+		command=lambda: target_selection(targetFlags, settings['target'])
+		)
+	targetFlags[0] = triggerSettings.variables['chAenabled']
+	triggerSettings.add_checkbutton(
+		id='chBenabled',
+		prompt='B',
+		on_off=('B', ''),
+		default='B' if 'B' in settings['target'].get() else '',
+		command=lambda: target_selection(targetFlags, settings['target'])
+		)
+	targetFlags[1] = triggerSettings.variables['chBenabled']
+	triggerSettings.add_checkbutton(
+		id='chCenabled',
+		prompt='C',
+		on_off=('C', ''),
+		default='C' if 'C' in settings['target'].get() else '',
+		command=lambda: target_selection(targetFlags, settings['target'])
+		)
+	targetFlags[2] = triggerSettings.variables['chCenabled']
+	triggerSettings.add_checkbutton(
+		id='chDenabled',
+		prompt='D',
+		on_off=('D', ''),
+		default='D' if 'D' in settings['target'].get() else '',
+		command=lambda: target_selection(targetFlags, settings['target'])
+		)
+	targetFlags[3] = triggerSettings.variables['chDenabled']
 
-	Label(trigSettingsLbf, text='Pre-trigger samples').grid(column=0, row=3, columnspan=2, **lbf_contents_padding, sticky='nw') 
-	settings['preTrigSamples'] = IntVar(value=params['preTrigSamples'])
-	preTrigSpbx = Spinbox(
-			trigSettingsLbf,
-			from_=0,
-			to=500,
-			textvariable=settings['preTrigSamples'],
-			width=7,
-			increment=1
-			)
-	preTrigSpbx.grid(column=0, row=4, columnspan=2, padx=lbf_contents_padding['padx'], sticky='nw')
+	triggerSettings.add_spinbox(
+		id='preTrigSamples',
+		from_to=(0, 500),
+		step=1,
+		default=params['preTrigSamples'],
+		prompt='Pre-trigger samples'
+		)
+	settings['preTrigSamples'] = triggerSettings.variables['preTrigSamples']
 
-	Label(trigSettingsLbf, text='Post-trigger samples').grid(column=0, row=5, columnspan=2, **lbf_contents_padding, sticky='nw') 
-	settings['postTrigSamples'] = IntVar(value=params['postTrigSamples'])
-	postTrigSpbx = Spinbox(
-			trigSettingsLbf,
-			from_=1,
-			to=500,
-			textvariable=settings['postTrigSamples'],
-			width=7,
-			increment=1
-			)
-	postTrigSpbx.grid(column=0, row=6, columnspan=2, padx=lbf_contents_padding['padx'], sticky='nw')
+	triggerSettings.add_spinbox(
+		id='postTrigSamples',
+		from_to=(1, 500),
+		step=1,
+		default=params['postTrigSamples'],
+		prompt='Post-trigger samples'
+		)
+	settings['postTrigSamples'] = triggerSettings.variables['postTrigSamples']
 
-	Label(trigSettingsLbf, text='Timebase').grid(column=0, row=7, columnspan=2, **lbf_contents_padding, sticky='nw') 
-	settings['timebase'] = IntVar(value=params['timebase'])
-	timebaseSpbx = Spinbox(
-			trigSettingsLbf,
-			from_=0,
-			to=2 ** 32 - 1,
-			textvariable=settings['timebase'],
-			width=7,
-			increment=1
-			)
-	timebaseSpbx.grid(column=0, row=8, columnspan=2, padx=lbf_contents_padding['padx'], sticky='nw')
+	triggerSettings.add_spinbox(
+		id='timebase',
+		from_to=(0, 2 ** 32 - 1),
+		step=1,
+		prompt='Timebase',
+		default=params['timebase']
+		)
+	settings['timebase'] = triggerSettings.variables['timebase']
 
-	Label(trigSettingsLbf, text='Threshold (mV)').grid(column=0, row=9, columnspan=2, **lbf_contents_padding, sticky='nw') 
-	settings['thresholdmV'] = IntVar(value=int(params['thresholdmV']))
-	thresholdSpbx = Spinbox(
-			trigSettingsLbf,
-			from_=-chInputRanges[params[f"ch{params['target'][0]}range"]], # will need a better fix for this
-			to=0,
-			textvariable=settings['thresholdmV'],
-			width=7,
-			increment=1
-			)
-	thresholdSpbx.grid(column=0, row=10, columnspan=2, padx=lbf_contents_padding['padx'], sticky='nw')
+	triggerSettings.add_spinbox(
+		id='thresholdmV',
+		from_to=(-chInputRanges[params[f"ch{params['target'][0]}range"]], 0),  # will need a better fix for this
+		step=1,
+		prompt='Threshold (mV)',
+		default=int(params['thresholdmV'])
+		)
+	settings['thresholdmV'] = triggerSettings.variables['thresholdmV']
 
-	Label(trigSettingsLbf, text='Auto trigger (ms)').grid(column=0, row=11, columnspan=2, **lbf_contents_padding, sticky='nw') 
-	settings['autoTrigms'] = IntVar(value=params['autoTrigms'])
-	autoTrigSpbx = Spinbox(
-			trigSettingsLbf,
-			from_=500,
-			to=10000,
-			textvariable=settings['autoTrigms'],
-			width=7,
-			increment=100
-			)
-	autoTrigSpbx.grid(column=0, row=12, columnspan=2, padx=lbf_contents_padding['padx'], sticky='nw')
+	triggerSettings.add_spinbox(
+		id='autoTrigms',
+		from_to=(500, 10000),
+		step=100,
+		prompt='Auto trigger (ms)',
+		default=params['autoTrigms']
+		)
+	settings['autoTrigms'] = triggerSettings.variables['autoTrigms']
 
-	Label(trigSettingsLbf, text='Trigger delay (s)').grid(column=0, row=13, columnspan=2, **lbf_contents_padding, sticky='nw') 
-	settings['delaySeconds'] = IntVar(value=params['delaySeconds'])
-	delaySpbx = Spinbox(
-			trigSettingsLbf,
-			from_=0,
-			to=10,
-			textvariable=settings['delaySeconds'],
-			width=7,
-			increment=1
-			)
-	delaySpbx.grid(column=0, row=14, columnspan=2, padx=lbf_contents_padding['padx'], sticky='nw')
+	triggerSettings.add_spinbox(
+		id='delaySeconds',
+		from_to=(0, 10),
+		step=1,
+		prompt='Trigger delay (s)',
+		default=params['delaySeconds']
+		)
+	settings['delaySeconds'] = triggerSettings.variables['delaySeconds']
 
-	Label(trigSettingsLbf, text='Max. timeouts').grid(column=0, row=15, columnspan=2, **lbf_contents_padding, sticky='nw')
-	maxTimeouts = Spinbox(
-			trigSettingsLbf,
-			from_=3,
-			to=10,
-			textvariable=settings['maxTimeouts'],
-			width=7,
-			increment=1
-			)
-	maxTimeouts.grid(column=0, row=16, columnspan=2, padx=lbf_contents_padding['padx'], sticky='nw')
+	triggerSettings.add_spinbox(
+		id='maxTimeouts',
+		from_to=(3, 10),
+		step=1,
+		prompt='Max. timeouts',
+		default=params['maxTimeouts']
+		)
+	settings['maxTimeouts'] = triggerSettings.variables['maxTimeouts']
+
+	triggerSettings.group(
+		id='TARGETS',
+		members=['chAenabled', 'chBenabled', 'chCenabled', 'chDenabled'],
+		name='Target(s)',
+		cspan=2
+		)
+	triggerSettings.arrange()
 
 	""" Channels settings """
 	chASettings = ChannelSettings(settingsTab, id='A', column=1)
@@ -812,13 +792,15 @@ def main() -> None:
 	chDSettings = ChannelSettings(settingsTab, id='D', column=4)
 
 	""" File settings """
-	fileSettings = TabLabelframe(
-		settingsTab, title='Data file', col=1, row=1, size=(3, 4), cspan=4, padding=lbf_asym_padding_no_top
+	fileSettings = PVLabelframe(
+		settingsTab, title='Data file', col=1, row=1, size=(3, 5), cspan=3,
+		padding=lbf_asym_padding_no_top, sticky='nsw'
 		)
 	fileSettings.add_optionmenu(
 		id='dataFileType', prompt='Save data as:', default=params['dformat'], options=dataFileTypes
 		)
 	settings['dformat'] = fileSettings.get_raw('dataFileType')
+
 	fileSettings.add_checkbutton(
 		id='count', prompt='Counter', default=params['includeCounter'], on_off=(1, 0)
 		)
@@ -831,17 +813,19 @@ def main() -> None:
 		id='peakToPeak', prompt='Peak-to-peak', default=params['includePeakToPeak'], on_off=(1, 0)
 		)
 	settings['includePeakToPeak'] = fileSettings.get_raw('peakToPeak')
-	fileSettings.add_spinbox(
-		id='test', from_to=(15.0, 20.0), step=.5
+	fileSettings.group(
+		id='includedData',
+		members=['count', 'amplitude', 'peakToPeak'],
+		name='Data to include in file'
 		)
-	fileSettings.add_combobox(id='Test 2', options=[1, 2, 3, 4], default=3, prompt='Test 2')
+	fileSettings.arrange()
 
 	""" Apply settings button """
 	applySettingsBtn = Button(
 		settingsTab, text='Apply', takefocus=False, command=lambda: apply_changes(settings, applySettingsBtn)
 		)
 	applySettingsBtn.state(['disabled'])  # Will only be enabled if a setting is changed
-	applySettingsBtn.grid(column=4, row=2, padx=0, pady=0, ipadx=THIN_PAD, ipady=THIN_PAD, sticky='e')
+	applySettingsBtn.grid(column=4, row=1, padx=0, pady=0, ipadx=THIN_PAD, ipady=THIN_PAD, sticky='se')
 
 	for variable in settings.values():  # Enable Apply button if any variable is changed
 		variable.trace_add('write', lambda var, index, mode: enable_apply_btn(applySettingsBtn))
