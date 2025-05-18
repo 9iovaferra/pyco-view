@@ -30,7 +30,7 @@ def HSeparator(parent, row: int, columnspan: int) -> None:
 
 tkAnyVar = Union[IntVar, DoubleVar, StringVar]
 
-class TabLabelframe(Labelframe):
+class PVLabelframe(Labelframe):
 	def __init__(
 			self,
 			parent: Notebook,
@@ -38,13 +38,14 @@ class TabLabelframe(Labelframe):
 			col: int,
 			row: int,
 			size: tuple[int, int],
-			sticky: Optional[str] = None,  # Same format as in tkinter
+			sticky: Optional[str] = 'nw',  # Same format as in tkinter
 			cspan: Optional[int] = None,
 			rspan: Optional[int] = None,
 			padding: Optional[dict[str, int]] = None
 			):
 		self.parent = parent
 		self.grandparent = parent.winfo_toplevel()  # Get root window
+		self.children: dict = {}
 		self.labelframe = Labelframe(parent, text=title)
 		self.auto_pos_x = 0  # Self-increasing column counter
 		self.auto_pos_y = 0  # Self-increasing row counter
@@ -53,7 +54,7 @@ class TabLabelframe(Labelframe):
 		self.variables: dict[str, tkAnyVar] = {}  # Container for tk variables
 		# if not all([c in 'nesw' for c in sticky]) or not isinstance(sticky, str):
 		# 	raise Exception('Invalid parameter value')
-		grid_kwargs = {'column': col, 'row': row, 'sticky': 'nesw' if sticky is None else sticky}
+		grid_kwargs = {'column': col, 'row': row, 'sticky': sticky}
 		if cspan is not None:
 			grid_kwargs['columnspan'] = cspan
 		# 	_ = [self.parent.grid_columnconfigure(c + col, weight=1) for c in range(cspan)]
@@ -67,7 +68,13 @@ class TabLabelframe(Labelframe):
 		grid_kwargs.update(padding if padding is not None else lbf_asym_padding)
 		self.labelframe.grid(**grid_kwargs)
 
-	def __auto_place(self, widget, padding: dict[str, int] = None, sticky: str = None):
+	def __auto_place(
+			self,
+			widget,
+			id: str,
+			padding: dict[str, int] = None,
+			sticky: str = None,
+			**kwargs):
 		# print(f'{self.auto_pos_x=}\t{self.auto_pos_y=}')
 		grid_kwargs = {
 				'column': self.auto_pos_x,
@@ -77,39 +84,42 @@ class TabLabelframe(Labelframe):
 				'pady': (0, 0)
 				}
 		grid_kwargs.update(padding if padding is not None else lbf_contents_padding)
+		# if padding is None and self.auto_pos_y > 0:  # Larger space between elements
+		# 	grid_kwargs['pady'] = (WIDE_PAD, 0)
+		grid_kwargs.update(kwargs)
 		if self.auto_pos_x > 0:  # Spacing between columns
 			grid_kwargs['padx'] = (  # Checkbuttons have wider left padding by default
 				WIDE_PAD * 5 / 3 - 1 if widget.winfo_class() == 'Checkbutton' else 2 * WIDE_PAD,
 				grid_kwargs['padx'][1]
 				)
-		print(f'{grid_kwargs=}')
+		# print(f'{grid_kwargs=}')
 		if self.auto_pos_y == self.maxrow - 1:
 			self.auto_pos_x += 1
 			self.auto_pos_y = 0
-		elif self.auto_pos_x == self.maxcol - 1:
+		elif self.auto_pos_x > self.maxcol - 1:
 			raise Exception('Too many widgets for specified size.')
 		else:
 			self.auto_pos_y += 1
 
-		widget.grid(**grid_kwargs)
+		self.children.update({id: (widget, grid_kwargs)})
 
 	def __create_tk_var(self, options: list[Any], default: Any | None) -> tkAnyVar:
-		given_type = type(options[0])
-		if default is not None and given_type is not type(default):
+		inferred_type = type(options[0])
+		if default is not None and inferred_type is not type(default):
 			raise TypeError(
-				f'Options and default value types don\'t match ({given_type!s} vs {type(default)!s})'
+				f'Options and default value types don\'t match ({inferred_type!s} vs {type(default)!s})'
 				)
-		if given_type is str:
+		if inferred_type is str:
 			return StringVar(self.labelframe, value=options[0] if default is None else default)
-		elif given_type is int:
+		elif inferred_type is int:
 				return IntVar(self.labelframe, value=options[0] if default is None else default)
-		elif given_type is float:
+		elif inferred_type is float:
 				return DoubleVar(self.labelframe, value=options[0] if default is None else default)
 		else:
-			raise TypeError(f'Invalid variable type ({given_type})')
+			raise TypeError(f'Invalid variable type ({inferred_type})')
 
 	def __validate(self, entry: str) -> bool:
-		valid: bool = entry == '' or entry.isdigit() or _isfloat(entry)
+		valid: bool = entry == '' or entry == '-' or entry.isdigit() or _isfloat(entry)
 		return valid
 
 	def __assert_entry_ok(self, widget, valid_range: tuple[int, int]) -> None:
@@ -124,6 +134,11 @@ class TabLabelframe(Labelframe):
 			widget.delete(0, 'end')
 			widget.insert(0, str(valid_range[1]))
 
+	def arrange(self) -> None:
+		for widget, grid_kwargs in self.children.values():
+			# print(f'{widget=},\n\t{grid_kwargs=}')
+			widget.grid(**grid_kwargs)
+
 	def get_value(self, id: str) -> Any:
 		return self.variables[id].get()
 
@@ -132,13 +147,15 @@ class TabLabelframe(Labelframe):
 
 	def add_label(
 			self,
+			id: str,
 			text: str,
 			parent: Notebook | Frame = None,  # Optional parent frame for group
 			sticky: Optional[str] = None,
-			padding: Optional[dict[str, int]] = None
+			padding: Optional[dict[str, int]] = None,
+			**kwargs
 			) -> Label:
 		label = Label(self.labelframe if parent is None else parent, text=text)
-		self.__auto_place(label, sticky=sticky)
+		self.__auto_place(label, id=id, sticky=sticky, **kwargs)
 		return label
 
 	def add_spinbox(
@@ -148,7 +165,7 @@ class TabLabelframe(Labelframe):
 			step: int | float,
 			prompt: str = None,
 			default: Any = None,
-			width: int = 7,
+			width: int = 6,
 			padding: dict[str, int] = None,
 			sticky: str = None
 			) -> Spinbox:
@@ -157,7 +174,10 @@ class TabLabelframe(Labelframe):
 		self.variables[id] = self.__create_tk_var(from_to, default)
 		if prompt is not None:
 			self.add_label(
-				text=prompt, padding=padding if padding is not None else lbf_contents_padding, sticky=sticky
+				id=f'{id}.label',
+				text=prompt,
+				padding=padding if padding is not None else lbf_contents_padding,
+				sticky=sticky
 				)
 		spinbox = Spinbox(
 				self.labelframe,
@@ -167,11 +187,13 @@ class TabLabelframe(Labelframe):
 				width=width,
 				increment=step,
 				validate='key',
-				validatecommand=(self.grandparent.register(self.__validate), '%P')
+				validatecommand=(self.grandparent.register(self.__validate), '%P'),
+				takefocus=0
 				)
 		spinbox.bind('<FocusOut>', lambda _: self.__assert_entry_ok(spinbox, from_to))
 		self.__auto_place(
 			spinbox,
+			id=id,
 			padding={'padx': lbf_contents_padding['padx']} if prompt is not None else lbf_contents_padding,
 			sticky=sticky
 			)
@@ -195,7 +217,8 @@ class TabLabelframe(Labelframe):
 				variable=self.variables[id],
 				text=prompt,
 				onvalue=on_off[0],
-				offvalue=on_off[1]
+				offvalue=on_off[1],
+				takefocus=0
 				)
 		if default == on_off[0]:
 			checkbutton.select()
@@ -203,7 +226,8 @@ class TabLabelframe(Labelframe):
 			checkbutton.config(command=command)
 		self.__auto_place(
 			checkbutton,
-			padding={'pady': (THIN_PAD, 0)} if padding is None else padding,
+			id=id,
+			padding={'pady': (0, 0)} if padding is None else padding,
 			sticky=sticky
 			)
 		return checkbutton
@@ -222,7 +246,10 @@ class TabLabelframe(Labelframe):
 		self.variables[id] = self.__create_tk_var(options, default)
 		if prompt is not None:
 			self.add_label(
-				text=prompt, padding=padding if padding is not None else lbf_contents_padding, sticky=sticky
+				id=f'{id}.label',
+				text=prompt,
+				padding=padding if padding is not None else lbf_contents_padding,
+				sticky=sticky
 				)
 		option_menu = OptionMenu(
 				self.labelframe,
@@ -232,6 +259,7 @@ class TabLabelframe(Labelframe):
 				)
 		self.__auto_place(
 			option_menu,
+			id=id,
 			padding={'padx': lbf_contents_padding['padx']} if prompt is not None else lbf_contents_padding,
 			sticky=sticky
 			)
@@ -244,7 +272,7 @@ class TabLabelframe(Labelframe):
 			default: Any = None,
 			state: str = 'readonly',
 			prompt: str = None,
-			width: int = 7,
+			width: int = 6,
 			padding: dict[str, int] = None,
 			sticky: str = None
 			) -> Combobox:
@@ -253,7 +281,10 @@ class TabLabelframe(Labelframe):
 		self.variables[id] = self.__create_tk_var(options, default)
 		if prompt is not None:
 			self.add_label(
-				text=prompt, padding=padding if padding is not None else lbf_contents_padding, sticky=sticky
+				id=f'{id}.label',
+				text=prompt,
+				padding=padding if padding is not None else lbf_contents_padding,
+				sticky=sticky
 				)
 		combobox = Combobox(
 				self.labelframe,
@@ -264,6 +295,7 @@ class TabLabelframe(Labelframe):
 				)
 		self.__auto_place(
 			combobox,
+			id=id,
 			padding={'padx': lbf_contents_padding['padx']} if prompt is not None else lbf_contents_padding,
 			sticky=sticky
 			)
@@ -271,19 +303,67 @@ class TabLabelframe(Labelframe):
 
 	def group(
 			self,
+			id: str,
 			members: list[str],
 			name: str = None,
-			layout: str = 'relaxed',
+			layout: str = 'compact',  # Or 'relaxed'
+			cspan: int = None,
 			padding: dict[str, int] = None,
 			sticky: str = None
 			) -> None:
 		""" MEGA WIP """
 		if not all([id in self.variables for id in members]):
 			raise Exception('One or more members don\'t exist!')
-		if (len(members) == self.maxrow and name is not None) or (len(members) > self.maxrow):
-			layout = 'compact'
-		# frame = Frame(self.labelframe, padding=0)
+		# print(f'{members=}')
+		n_members = len(members)
+		if n_members == 1:
+			raise Exception('Can\'t make a group with just one member.')
+		if cspan is not None and cspan > n_members:
+			raise Exception(f'Column span {cspan} is greater than number of members {n_members}!')
+
 		if name is not None:
+			group_name_id = f'{id}.label'
 			self.add_label(
-				text=name, padding=padding if padding is not None else lbf_contents_padding, sticky=sticky
+				id=group_name_id,
+				text=name,
+				padding=padding if padding is not None else lbf_contents_padding,
+				sticky=sticky
 				)
+			members.insert(0, group_name_id)
+			# Find first member's row and swap it with the title
+			first_member_row = min([self.children[m][1]['row'] for m in members][1:])
+			first_member_col = min([self.children[m][1]['column'] for m in members][1:])
+			# print(f'{first_member_row=}, {first_member_col=}')
+			self.children[group_name_id][1]['row'] = first_member_row
+			self.children[group_name_id][1]['column'] = first_member_col
+			if first_member_row > 0:
+				self.children[group_name_id][1]['pady'] = (WIDE_PAD, 0)
+			if first_member_col == 0:
+				self.children[group_name_id][1]['padx'] = (THIN_PAD, 0)
+
+		columnspan = (self.auto_pos_y + 1 + n_members) // self.maxrow + 1 if cspan is None else cspan
+		# print(f'{columnspan=}')
+		if columnspan > 1:  # Set columnspan for all widgets in the same column as the group
+			for c in set(self.children).symmetric_difference(members[1:]):
+				# print(f'\t{c=}')
+				if self.children[c][1]['column'] == self.children[members[1]][1]['column']:
+					self.children[c][1]['columnspan'] = columnspan
+			self.auto_pos_x += (columnspan - 1)
+			self.auto_pos_y -= 1
+
+		new_col = False
+		for m in members[1:]:  # Treating group as a frame on its own
+			self.children[m][1]['row'] += 1
+			if self.children[m][1]['row'] in (self.maxrow, n_members // columnspan + 1):
+				new_col = True
+			if new_col:
+				self.children[m][1]['column'] += 1
+				self.children[m][1]['row'] -= 2
+			# else:
+			# 	self.children[m][1]['row'] -= 1
+			if layout == 'compact':
+				self.children[m][1]['pady'] = 0
+			# print(f"{m=}\t{self.children[m][1]['column']=}\t{self.children[m][1]['row']=}")
+
+		if columnspan > 1:
+			self.auto_pos_x -= (columnspan - 1)
