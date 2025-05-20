@@ -64,12 +64,6 @@ def plot_data(
 			color='lightgrey', label=f'Delay\n{deltaT:.2f} ns'
 			)
 
-	# """ Threshold """
-	# plt.axhline(
-	# 	y=thresholdmV, linestyle="--", color="black",
-	# 	label=f"Channel A threshold\n{thresholdmV:.2f} mV"
-	# )
-
 	""" Gate open and closed points """
 	ax.plot(
 		gate['chA']['open']['ns'], gate['chA']['open']['mV'],
@@ -92,9 +86,6 @@ def plot_data(
 		color='darkgreen', marker='<',
 		label=f"Gate C closed\n{gate['chC']['closed']['ns']:.2f} ns"
 		)
-
-	# """ Threshold line """
-	# ax.plot(time.tolist()[bufferChAmV.index(min(bufferChAmV))], min(bufferChAmV), "ko")
 
 	ax.set_title(title)
 	plt.legend(loc='lower right')
