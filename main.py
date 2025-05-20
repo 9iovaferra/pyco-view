@@ -2,11 +2,11 @@
 Copyright (C) 2019 Pico Technology Ltd.
 tkSliderWidget Copyright (c) 2020, Mengxun Li
 """
-from tkinter import Tk, Toplevel, Menu, Checkbutton, Spinbox, IntVar, StringVar
+from tkinter import Tk, Toplevel, Menu, Checkbutton, IntVar, StringVar
 from tkinter.filedialog import asksaveasfilename
 from tkinter.ttk import (
-		Label, Frame, Labelframe, Button, Combobox, OptionMenu, Notebook
-		)
+	Widget, Label, Frame, Labelframe, Button, Combobox, Spinbox, OptionMenu, Notebook
+	)
 from pycoviewlib.functions import parse_config, key_from_value, get_timeinterval, log
 from pycoviewlib.constants import *
 from pycoviewlib.gui_resources import *
@@ -98,65 +98,117 @@ class RootWindow(Tk):
 		self.destroy()
 
 class ChannelSettings():
-	def __init__(self, parent: Notebook, id: str, column: int):
-		self.id = id
-		self.frame = Labelframe(parent, text=f'Channel {id}')
-		self.frame.grid(column=column, row=0, **lbf_asym_padding, sticky='nw')
+	def __init__(self, parent: Notebook, name: str, col: int, row: int):
+		self.frame = PVLabelframe(
+			parent=parent, title=f'Channel {name}', size=(1, 9),
+			col=col, row=row, padding=lbf_asym_padding
+			)
 
-		settings[f'ch{id}enabled'] = IntVar(value=params[f'ch{id}enabled'])
-		self.enabled = Checkbutton(
-				self.frame,
-				variable=settings[f'ch{id}enabled'],
-				text='Enabled',
-				onvalue=1,
-				offvalue=0
+		self.frame.add_checkbutton(
+				id=f'ch{name}enabled',
+				prompt='Enabled',
+				on_off=(1, 0),
+				default=params[f'ch{name}enabled'],
+				padding={'pady': (THIN_PAD, 0)}
 				)
-		self.enabled.grid(column=0, row=0, pady=(THIN_PAD, 0), sticky='nw')
+		self.frame.add_combobox(
+				id=f'ch{name}range',
+				options=chInputRanges,
+				default=chInputRanges[params[f'ch{name}range']],
+				prompt='Range (±mV)'
+				)
+		self.frame.add_combobox(
+				id=f'ch{name}coupling',
+				options=list(couplings.keys()),
+				default=key_from_value(couplings, params[f'ch{name}coupling']),
+				prompt='Coupling'
+				)
+		self.frame.add_spinbox(
+				id=f'ch{name}analogOffset',
+				from_to=(0, chInputRanges[params[f'ch{name}range']]),
+				step=1,
+				default=int(params[f'ch{name}analogOffset'] * 1000),
+				prompt='Analogue offset (mV)'
+				)
+		self.frame.add_combobox(
+				id=f'ch{name}bandwidth',
+				options=list(bandwidths.keys()),
+				default=key_from_value(bandwidths, params[f'ch{name}bandwidth']),
+				prompt='Bandwidth'
+				)
+		self.frame.arrange()
 
-		Label(self.frame, text='Range (±mV)').grid(column=0, row=1, **lbf_contents_padding, sticky='nw')
-		settings[f'ch{id}range'] = IntVar(value=chInputRanges[params[f'ch{id}range']])
-		self.chRange = Combobox(
-				self.frame,
-				state='readonly',
-				values=chInputRanges,
-				textvariable=settings[f'ch{id}range'],
-				width=7
-				)
-		self.chRange.grid(column=0, row=2, padx=THIN_PAD, sticky='nw')
+		self.frame.children[f'ch{name}enabled'][0].configure(
+			command=lambda: [
+				toggle_widget_state(w[0], 'disabled' if settings[f'ch{name}enabled'].get() == 0 else '!disabled') \
+					for w in list(self.frame.children.values())[1:]
+				]
+			)
 
-		Label(self.frame, text='Coupling').grid(column=0, row=3, **lbf_contents_padding, sticky='nw') 
-		settings[f'ch{id}coupling'] = StringVar(value=key_from_value(couplings, params[f'ch{id}coupling']))
-		self.coupling = Combobox(
-				self.frame,
-				state='readonly',
-				values=list(couplings.keys()),
-				textvariable=settings[f'ch{id}coupling'],
-				width=7
-				)
-		self.coupling.grid(column=0, row=4, padx=THIN_PAD, sticky='nw')
-
-		Label(self.frame, text='Analogue offset (mV)').grid(column=0, row=5, **lbf_contents_padding, sticky='nw')
-		settings[f'ch{id}analogOffset'] = IntVar(value=params[f'ch{id}analogOffset'] * 1000)
-		self.analogOffset = Spinbox(
-				self.frame,
-				from_=0,
-				to=settings[f'ch{id}range'].get(),
-				textvariable=settings[f'ch{id}analogOffset'],
-				width=7,
-				increment=1
-				)
-		self.analogOffset.grid(column=0, row=6, padx=THIN_PAD, sticky='nw')
-
-		Label(self.frame, text='Bandwidth').grid(column=0, row=7, **lbf_contents_padding, sticky='nw') 
-		settings[f'ch{id}bandwidth'] = StringVar(value=key_from_value(bandwidths, params[f'ch{id}bandwidth']))
-		self.bandwidth = Combobox(
-				self.frame,
-				state='readonly',
-				values=list(bandwidths.keys()),
-				textvariable=settings[f'ch{id}bandwidth'],
-				width=7
-				)
-		self.bandwidth.grid(column=0, row=8, padx=THIN_PAD, sticky='nw')
+# class ChannelSettings():
+# 	def __init__(self, parent: Notebook, id: str, column: int):
+# 		self.id: str = id
+# 		self.frame = Labelframe(parent, text=f'Channel {id}')
+# 		self.frame.grid(column=column, row=0, **lbf_asym_padding, sticky='nw')
+# 		self.children: dict[str, Widget] = {}
+# 
+# 		self.children['enabled'] = Checkbutton(
+# 				self.frame,
+# 				variable=settings[f'ch{id}enabled'],
+# 				text='Enabled',
+# 				onvalue=1,
+# 				offvalue=0
+# 				)
+# 		self.children['enabled'].grid(column=0, row=0, pady=(THIN_PAD, 0), sticky='nw')
+# 
+# 		self.children['chRange.label'] = Label(self.frame, text='Range (±mV)')
+# 		self.children['chRange.label'].grid(column=0, row=1, **lbf_contents_padding, sticky='nw')
+# 		self.children['chRange'] = Combobox(
+# 				self.frame,
+# 				state='readonly',
+# 				values=chInputRanges,
+# 				textvariable=settings[f'ch{id}range'],
+# 				width=7
+# 				)
+# 		self.children['chRange'].grid(column=0, row=2, padx=THIN_PAD, sticky='nw')
+# 
+# 		self.children['coupling.label'] = Label(self.frame, text='Coupling')
+# 		self.children['coupling.label'].grid(column=0, row=3, **lbf_contents_padding, sticky='nw') 
+# 		self.children['coupling'] = Combobox(
+# 				self.frame,
+# 				state='readonly',
+# 				values=list(couplings.keys()),
+# 				textvariable=settings[f'ch{id}coupling'],
+# 				width=7
+# 				)
+# 		self.children['coupling'].grid(column=0, row=4, padx=THIN_PAD, sticky='nw')
+# 
+# 		self.children['analogOffset.label'] = Label(self.frame, text='Analog offset (mV)')
+# 		self.children['analogOffset.label'].grid(column=0, row=5, **lbf_contents_padding, sticky='nw')
+# 		self.children['analogOffset'] = Spinbox(
+# 				self.frame,
+# 				from_=0,
+# 				to=settings[f'ch{id}range'].get(),
+# 				textvariable=settings[f'ch{id}analogOffset'],
+# 				width=7,
+# 				increment=1
+# 				)
+# 		self.children['analogOffset'].grid(column=0, row=6, padx=THIN_PAD, sticky='nw')
+# 
+# 		self.children['bandwidth.label'] = Label(self.frame, text='Bandwidth')
+# 		self.children['bandwidth.label'].grid(column=0, row=7, **lbf_contents_padding, sticky='nw') 
+# 		self.children['bandwidth'] = Combobox(
+# 				self.frame,
+# 				state='readonly',
+# 				values=list(bandwidths.keys()),
+# 				textvariable=settings[f'ch{id}bandwidth'],
+# 				width=7
+# 				)
+# 		self.children['bandwidth'].grid(column=0, row=8, padx=THIN_PAD, sticky='nw')
+# 
+# 		self.children['enabled'].configure(
+# 			command=lambda: [toggle_widget_state(w, 'disabled' if settings[f'ch{id}enabled'].get() == 0 else '!disabled') for w in list(self.children.values())[1:]]
+# 			)
 
 class Histogram():
 	def __init__(
@@ -397,10 +449,6 @@ def probe_pico(root: Tk, mode: str, max_timeouts: int) -> None:
 		probe_canvas.get_tk_widget().pack()
 
 
-def refresh_run_tab(event, tab: Frame) -> None:
-	if event.widget.tab('current')['text'] == 'Run':
-		tab.update_idletasks()
-
 def apply_changes(settings: dict, apply_btn: Button) -> None:
 	""" Compares `settings` against `params`,
 	sends updated values to `update_setting()` """
@@ -454,9 +502,8 @@ def on_mode_change(mode: str, hist: Histogram) -> None:
 	hist.mode = mode
 	hist.create()
 
-def enable_apply_btn(apply_btn: Button) -> None:
-	if apply_btn.instate(['disabled']):
-		apply_btn.state(['!disabled'])
+def toggle_widget_state(widget: Widget, state: str = '!disabled') -> None:
+	widget.state([state])
 
 
 def main() -> None:
@@ -485,6 +532,12 @@ def main() -> None:
 	""" Main window & menu bar """
 	root: Tk = RootWindow()
 
+	global settings
+	settings = {
+		'target': StringVar(value=''.join(params['target'])),
+		'maxTimeouts': IntVar(value=params['maxTimeouts'])
+		}
+
 	topFrame = Frame(root, padding=(THIN_PAD, 0, THIN_PAD, THIN_PAD))
 	topFrame.grid(column=0, row=0, padx=WIDE_PAD, pady=(WIDE_PAD, 0), sticky='new')
 	topFrame.columnconfigure(3, weight=3)
@@ -498,6 +551,8 @@ def main() -> None:
 	runTab = Frame(tabControl, padding=(0, 0))
 	# tabControl.bind('<<NotebookTabChanged>>', lambda _: refresh_run_tab(event, runTab))
 	settingsTab = Frame(tabControl, padding=(0, 0))
+	settingsTab.rowconfigure(0, weight=1)
+	settingsTab.rowconfigure(1, weight=1)
 	tabControl.add(runTab, text='Run')
 	tabControl.add(settingsTab, text='Settings')
 	tabControl.pack(expand=1, fill='both')
@@ -511,18 +566,18 @@ def main() -> None:
 	as settings are changed. The 'refresh_run_tab' function takes care of setting the
 	new values so that the UI reflects said changes. """
 	summary_textvar = {
-			'range': [StringVar(value=f'±{r}') for r in param_ranges],
-			'analogOffset': [IntVar(value=int(o * 1000)) for o in param_offsets],
-			'coupling': [StringVar(value=c) for c in param_couplings],
-			'target': [StringVar(value=u'\u25cF' if ch in params['target'] else u'\u25cB') for ch in channelIDs],
-			'timebase': StringVar(value=get_timeinterval(params['timebase'])),
-			'thresholdmV': StringVar(value=f"{params['thresholdmV']:.0f} mV"),
-			'delaySeconds': StringVar(value=f"{params['delaySeconds']} s"),
-			'autoTrigms': StringVar(value=f"{params['autoTrigms']} ms"),
-			'maxTimeouts': StringVar(value=f"{params['maxTimeouts']}"),
-			'preTrigSamples': StringVar(value=f"{params['preTrigSamples']}"),
-			'postTrigSamples': StringVar(value=f"{params['postTrigSamples']}")
-			}
+		'range': [StringVar(value=f'±{r}') for r in param_ranges],
+		'analogOffset': [IntVar(value=int(o * 1000)) for o in param_offsets],
+		'coupling': [StringVar(value=c) for c in param_couplings],
+		'target': [StringVar(value=u'\u25cF' if ch in params['target'] else u'\u25cB') for ch in channelIDs],
+		'timebase': StringVar(value=get_timeinterval(params['timebase'])),
+		'thresholdmV': StringVar(value=f"{params['thresholdmV']:.0f} mV"),
+		'delaySeconds': StringVar(value=f"{params['delaySeconds']} s"),
+		'autoTrigms': StringVar(value=f"{params['autoTrigms']} ms"),
+		'maxTimeouts': StringVar(value=f"{params['maxTimeouts']}"),
+		'preTrigSamples': StringVar(value=f"{params['preTrigSamples']}"),
+		'postTrigSamples': StringVar(value=f"{params['postTrigSamples']}")
+		}
 
 	for i, ch, color in zip(range(1, 5), channelIDs, ['blue', 'red', 'green3', 'gold']):
 		Label(
@@ -652,12 +707,6 @@ def main() -> None:
 	histSaveBtn.grid(column=8, row=2, padx=0, pady=(WIDE_PAD, 0), ipady=THIN_PAD, sticky='ne')
 
 	""" Start/Stop job buttons """
-	global settings
-	settings = {
-			'target': StringVar(value=''.join(params['target'])),
-			'maxTimeouts': IntVar(value=params['maxTimeouts'])
-			}
-
 	startButton = Button(runTab, text='START', command=lambda: histogram.start(root=root, max_timeouts=params['maxTimeouts']))
 	startButton.grid(column=0, row=1, padx=(WIDE_PAD,0), pady=0, ipadx=THIN_PAD, ipady=THIN_PAD, sticky='esw')
 	stopButton = Button(runTab, text='STOP', command=histogram.stop)
@@ -679,7 +728,7 @@ def main() -> None:
 	def target_selection(flags: list[StringVar], targets: StringVar) -> None:
 		targets.set(flags[0].get() + flags[1].get() + flags[2].get() + flags[3].get())
 
-	triggerSettings = PVLabelframe(settingsTab, title='Trigger', col=0, row=0, size=(2, 18), rspan=2)
+	triggerSettings = PVLabelframe(settingsTab, title='Trigger', col=0, row=0, size=(2, 18), rspan=2, sticky='nsw')
 	targetFlags = [StringVar(value='') for _ in range(4)]
 	triggerSettings.add_checkbutton(
 		id='chAenabled',
@@ -786,15 +835,22 @@ def main() -> None:
 	triggerSettings.arrange()
 
 	""" Channels settings """
-	chASettings = ChannelSettings(settingsTab, id='A', column=1)
-	chBSettings = ChannelSettings(settingsTab, id='B', column=2)
-	chCSettings = ChannelSettings(settingsTab, id='C', column=3)
-	chDSettings = ChannelSettings(settingsTab, id='D', column=4)
+	chASettings = ChannelSettings(settingsTab, name='A', col=1, row=0)
+	chBSettings = ChannelSettings(settingsTab, name='B', col=2, row=0)
+	chCSettings = ChannelSettings(settingsTab, name='C', col=3, row=0)
+	chDSettings = ChannelSettings(settingsTab, name='D', col=4, row=0)
+
+	for id, chSettings in zip(channelIDs, [chASettings, chBSettings, chCSettings, chDSettings]):
+		settings[f'ch{id}enabled'] = chSettings.frame.variables[f'ch{id}enabled']
+		settings[f'ch{id}range'] = chSettings.frame.variables[f'ch{id}range']
+		settings[f'ch{id}coupling'] = chSettings.frame.variables[f'ch{id}coupling']
+		settings[f'ch{id}analogOffset'] = chSettings.frame.variables[f'ch{id}analogOffset']
+		settings[f'ch{id}bandwidth'] = chSettings.frame.variables[f'ch{id}bandwidth']
 
 	""" File settings """
 	fileSettings = PVLabelframe(
-		settingsTab, title='Data file', col=1, row=1, size=(3, 5), cspan=3,
-		padding=lbf_asym_padding_no_top, sticky='nsw'
+		settingsTab, title='Data file', col=1, row=1, size=(1, 6), cspan=1,
+		padding=lbf_asym_padding_no_top, sticky='nesw'
 		)
 	fileSettings.add_optionmenu(
 		id='dataFileType', prompt='Save data as:', default=params['dformat'], options=dataFileTypes
@@ -805,18 +861,19 @@ def main() -> None:
 		id='count', prompt='Counter', default=params['includeCounter'], on_off=(1, 0)
 		)
 	settings['includeCounter'] = fileSettings.get_raw('count')
-	fileSettings.add_checkbutton(
+	includeAmplitude = fileSettings.add_checkbutton(
 		id='amplitude', prompt='Amplitude', default=params['includeAmplitude'], on_off=(1, 0)
 		)
 	settings['includeAmplitude'] = fileSettings.get_raw('amplitude')
-	fileSettings.add_checkbutton(
+	includePeakToPeak = fileSettings.add_checkbutton(
 		id='peakToPeak', prompt='Peak-to-peak', default=params['includePeakToPeak'], on_off=(1, 0)
 		)
 	settings['includePeakToPeak'] = fileSettings.get_raw('peakToPeak')
+
 	fileSettings.group(
 		id='includedData',
 		members=['count', 'amplitude', 'peakToPeak'],
-		name='Data to include in file'
+		name='Data included in file'
 		)
 	fileSettings.arrange()
 
@@ -825,10 +882,10 @@ def main() -> None:
 		settingsTab, text='Apply', takefocus=False, command=lambda: apply_changes(settings, applySettingsBtn)
 		)
 	applySettingsBtn.state(['disabled'])  # Will only be enabled if a setting is changed
-	applySettingsBtn.grid(column=4, row=1, padx=0, pady=0, ipadx=THIN_PAD, ipady=THIN_PAD, sticky='se')
+	applySettingsBtn.grid(column=4, row=1, padx=0, pady=(0, WIDE_PAD), ipadx=THIN_PAD, ipady=THIN_PAD, sticky='se')
 
 	for variable in settings.values():  # Enable Apply button if any variable is changed
-		variable.trace_add('write', lambda var, index, mode: enable_apply_btn(applySettingsBtn))
+		variable.trace_add('write', lambda var, index, mode: toggle_widget_state(applySettingsBtn))
 
 	root.center()
 	root.mainloop()
