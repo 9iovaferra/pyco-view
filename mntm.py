@@ -45,14 +45,24 @@ def plot_data(
 	ax.plot(time, bufferChDmV[:], color='gold', label='Channel D (gate)')
 
 	""" Bounds from gate """
-	for g in gate.values():
+	for g, id, color in zip(gate.values(), channelIDs, ['darkblue', 'darkred', 'darkgreen', 'goldenrod']):
+		ax.plot(
+			g['open']['ns'], g['open']['mV'],
+			color=color, marker='>',
+			label=f"Gate {id} open\n{g['open']['ns']:.2f} ns"
+			)
+		ax.plot(
+			g['closed']['ns'], g['closed']['mV'],
+			color=color, marker='<',
+			label=f"Gate {id} closed\n{g['closed']['ns']:.2f} ns"
+			)
 		ax.plot(
 			[g['open']['ns']] * 2, [g['open']['mV'], yLowerLim],
-			linestyle='--', color='darkblue'
+			linestyle='--', color=color
 			)
 		ax.plot(
 			[g['closed']['ns']] * 2, [g['closed']['mV'], yLowerLim],
-			linestyle='--', color='darkblue'
+			linestyle='--', color=color
 			)
 
 	ax.fill_between(
@@ -61,29 +71,10 @@ def plot_data(
 			color='lightgrey', label=f'Delay\n{deltaT:.2f} ns'
 			)
 
-	# """ Threshold """
-	# ax.axhline(
-	# 	y=thresholdmV, linestyle="--", color="black", label=f"Channel A threshold\n{thresholdmV:.2f} mV"
-	# 	)
-
-	""" Gate open and closed points """
-	for g, id in zip(gate.values(), channelIDs):
-		ax.plot(
-			g['open']['ns'], g['open']['mV'],
-			color='darkblue', marker='>',
-			label=f"Gate {id} open\n{g['open']['ns']:.2f} ns"
-			)
-		ax.plot(
-			g['closed']['ns'], g['closed']['mV'],
-			color='darkblue', marker='<',
-			label=f"Gate {id} closed\n{g['closed']['ns']:.2f} ns"
-			)
-
-	# """ Threshold line """
-	# ax.plot(time.tolist()[bufferChAmV.index(min(bufferChAmV))], min(bufferChAmV), "ko")
-
 	ax.set_title(title)
 	plt.legend(loc="lower right")
+
+	return fig
 
 
 class Meantimer:
@@ -240,9 +231,9 @@ class Meantimer:
 		self.timeIntervalns = c_float()
 		returnedMaxSamples = c_int32()
 		self.status['getTimebase2'] = ps.ps6000GetTimebase2(
-				self.chandle, self.timebase, self.maxSamples, byref(self.timeIntervalns), 1,
-				byref(returnedMaxSamples), 0
-				)
+			self.chandle, self.timebase, self.maxSamples, byref(self.timeIntervalns), 1,
+			byref(returnedMaxSamples), 0
+			)
 		err.append(self.__check_health(self.status['getTimebase2']))
 
 		# """ Execution time benchmarking (see below) """
@@ -304,11 +295,11 @@ class Meantimer:
 		buffers length = maxSamples
 		ratio mode = PS6000_RATIO_MODE_NONE = 0
 		"""
-		for i, id in enumerate(channelIDs):
-			self.status[f'setDataBuffers{id}'] = ps.ps6000SetDataBuffers(
-					self.chandle, i, byref(buffers[id][0]), byref(buffers[id][1]), self.maxSamples, 0
-					)
-			err.append(self.__check_health(self.status[f'setDataBuffers{id}'], stop=True))
+		for id, name in enumerate(channelIDs):
+			self.status[f'setDataBuffers{name}'] = ps.ps6000SetDataBuffers(
+				self.chandle, id, byref(buffers[name][0]), byref(buffers[name][1]), self.maxSamples, 0
+				)
+			err.append(self.__check_health(self.status[f'setDataBuffers{name}'], stop=True))
 
 		""" Retrieve data from scope to buffers assigned above.
 		start index = 0
