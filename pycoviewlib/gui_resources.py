@@ -1,5 +1,5 @@
-from tkinter import IntVar, DoubleVar, StringVar, Checkbutton, Spinbox
-from tkinter.ttk import Frame, Separator, Notebook, Labelframe, Label, OptionMenu, Combobox
+from tkinter import IntVar, DoubleVar, StringVar, Checkbutton, Widget
+from tkinter.ttk import Frame, Separator, Notebook, Labelframe, Label, OptionMenu, Combobox, Spinbox
 from pycoviewlib.functions import _isfloat
 from typing import Union, Any, Optional, Callable
 
@@ -45,7 +45,7 @@ class PVLabelframe(Labelframe):
 			):
 		self.parent = parent
 		self.grandparent = parent.winfo_toplevel()  # Get root window
-		self.children: dict = {}
+		self.children: dict[str, tuple[Widget, dict[str, int]]] = {}
 		self.labelframe = Labelframe(parent, text=title)
 		self.auto_pos_x = 0  # Self-increasing column counter
 		self.auto_pos_y = 0  # Self-increasing row counter
@@ -272,7 +272,7 @@ class PVLabelframe(Labelframe):
 			default: Any = None,
 			state: str = 'readonly',
 			prompt: str = None,
-			width: int = 6,
+			width: int = 7,
 			padding: dict[str, int] = None,
 			sticky: str = None
 			) -> Combobox:
@@ -308,10 +308,9 @@ class PVLabelframe(Labelframe):
 			name: str = None,
 			layout: str = 'compact',  # Or 'relaxed'
 			cspan: int = None,
-			padding: dict[str, int] = None,
+			padding: dict[str, int] = lbf_contents_padding,
 			sticky: str = None
 			) -> None:
-		""" MEGA WIP """
 		if not all([id in self.variables for id in members]):
 			raise Exception('One or more members don\'t exist!')
 		# print(f'{members=}')
@@ -326,7 +325,8 @@ class PVLabelframe(Labelframe):
 			self.add_label(
 				id=group_name_id,
 				text=name,
-				padding=padding if padding is not None else lbf_contents_padding,
+				# padding=padding if padding is not None else lbf_contents_padding,
+				padding=padding,
 				sticky=sticky
 				)
 			members.insert(0, group_name_id)
@@ -348,22 +348,17 @@ class PVLabelframe(Labelframe):
 				# print(f'\t{c=}')
 				if self.children[c][1]['column'] == self.children[members[1]][1]['column']:
 					self.children[c][1]['columnspan'] = columnspan
-			self.auto_pos_x += (columnspan - 1)
 			self.auto_pos_y -= 1
 
 		new_col = False
 		for m in members[1:]:  # Treating group as a frame on its own
 			self.children[m][1]['row'] += 1
-			if self.children[m][1]['row'] in (self.maxrow, n_members // columnspan + 1):
+			# print(f'{(self.maxrow, n_members // columnspan + 1)=}')
+			if not new_col and (columnspan > 1 and self.children[m][1]['row'] in (self.maxrow, n_members // columnspan + 1)):
 				new_col = True
 			if new_col:
 				self.children[m][1]['column'] += 1
 				self.children[m][1]['row'] -= 2
-			# else:
-			# 	self.children[m][1]['row'] -= 1
 			if layout == 'compact':
 				self.children[m][1]['pady'] = 0
 			# print(f"{m=}\t{self.children[m][1]['column']=}\t{self.children[m][1]['row']=}")
-
-		if columnspan > 1:
-			self.auto_pos_x -= (columnspan - 1)
