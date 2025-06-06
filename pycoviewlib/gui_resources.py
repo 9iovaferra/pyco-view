@@ -1,5 +1,7 @@
-from tkinter import IntVar, DoubleVar, StringVar, Checkbutton, Widget
-from tkinter.ttk import Frame, Separator, Notebook, Labelframe, Label, OptionMenu, Combobox, Spinbox
+from tkinter import IntVar, DoubleVar, StringVar, Widget, Checkbutton
+from tkinter.ttk import (
+	Frame, Separator, Notebook, Labelframe, Label, OptionMenu, Combobox, Spinbox
+	)
 from pycoviewlib.functions import _isfloat
 from typing import Union, Any, Optional, Callable
 
