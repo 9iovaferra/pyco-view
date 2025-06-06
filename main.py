@@ -2,12 +2,13 @@
 Copyright (C) 2019 Pico Technology Ltd.
 tkSliderWidget Copyright (c) 2020, Mengxun Li
 """
-from tkinter import Tk, Toplevel, Menu, Checkbutton, IntVar, StringVar
+from tkinter import Tk, Toplevel, Menu, IntVar, StringVar, PhotoImage
 from tkinter.filedialog import asksaveasfilename
 from tkinter.ttk import (
-	Widget, Label, Frame, Labelframe, Button, Combobox, Spinbox, OptionMenu, Notebook
+	Widget, Label, Frame, Labelframe, Checkbutton, Button, Spinbox, OptionMenu, Notebook
 	)
-from pycoviewlib.functions import parse_config, key_from_value, get_timeinterval, log
+from pyi_splash import close as pyi_splash_close  # Close splash screen when app has loaded
+from pycoviewlib.functions import parse_config, key_from_value, get_timeinterval
 from pycoviewlib.constants import *
 from pycoviewlib.gui_resources import *
 from pycoviewlib.tkSliderWidget.tkSliderWidget import Slider
@@ -18,13 +19,11 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from threading import Thread, Event
 from queue import Queue
 from os import system
-from datetime import datetime
+# from datetime import datetime
 from pathlib import Path
 from typing import Union, Optional
 from webbrowser import open_new
 
-def placeholder():
-	print('This command definitely does something (trust me).')
 
 class RootWindow(Tk):
 	def __init__(self, *args, **kwargs):
@@ -32,7 +31,10 @@ class RootWindow(Tk):
 		self.resizable(0, 0)
 		self.after(0, self.hide())
 		self.title('PycoView')
+		dockIcon = PhotoImage(file='pycoview.png')
+		self.wm_iconphoto(False, dockIcon)
 		self.protocol('WM_DELETE_WINDOW', self.delete_window)
+
 		self.menu_bar = Menu(self)
 		self.config(menu=self.menu_bar)
 		self.file_menu = Menu(self.menu_bar, tearoff=0)
@@ -81,15 +83,16 @@ class RootWindow(Tk):
 
 	def open_about_window(self) -> None:
 		about = Toplevel()
+		about.geometry('250x180')
 		about.resizable(0, 0)
 		about.after(0, self.hide())
 		about.title('About')
 		title = Label(about, text='PycoView', font=18, anchor='center')
-		title.grid(column=0, row=0, **uniform_padding, sticky='new')
-		app_version = Label(about, text='v0.57 (pre-alpha)', anchor='center')
-		app_version.grid(column=0, row=1, **uniform_padding, sticky='new')
+		title.pack(expand=1, fill='x')
+		app_version = Label(about, text='v0.101', anchor='center')
+		app_version.pack(expand=1, fill='x')
 		link = Label(about, text='Github Repository', foreground='blue', cursor='hand2', anchor='center')
-		link.grid(column=0, row=2, **uniform_padding, sticky='esw')
+		link.pack(expand=1, fill='x')
 		link.bind('<Button-1>', lambda _: open_new('https://github.com/9iovaferra/pyco-view'))
 		self.center(target=about)
 
@@ -144,71 +147,6 @@ class ChannelSettings():
 					for w in list(self.frame.children.values())[1:]
 				]
 			)
-
-# class ChannelSettings():
-# 	def __init__(self, parent: Notebook, id: str, column: int):
-# 		self.id: str = id
-# 		self.frame = Labelframe(parent, text=f'Channel {id}')
-# 		self.frame.grid(column=column, row=0, **lbf_asym_padding, sticky='nw')
-# 		self.children: dict[str, Widget] = {}
-# 
-# 		self.children['enabled'] = Checkbutton(
-# 				self.frame,
-# 				variable=settings[f'ch{id}enabled'],
-# 				text='Enabled',
-# 				onvalue=1,
-# 				offvalue=0
-# 				)
-# 		self.children['enabled'].grid(column=0, row=0, pady=(THIN_PAD, 0), sticky='nw')
-# 
-# 		self.children['chRange.label'] = Label(self.frame, text='Range (±mV)')
-# 		self.children['chRange.label'].grid(column=0, row=1, **lbf_contents_padding, sticky='nw')
-# 		self.children['chRange'] = Combobox(
-# 				self.frame,
-# 				state='readonly',
-# 				values=chInputRanges,
-# 				textvariable=settings[f'ch{id}range'],
-# 				width=7
-# 				)
-# 		self.children['chRange'].grid(column=0, row=2, padx=THIN_PAD, sticky='nw')
-# 
-# 		self.children['coupling.label'] = Label(self.frame, text='Coupling')
-# 		self.children['coupling.label'].grid(column=0, row=3, **lbf_contents_padding, sticky='nw') 
-# 		self.children['coupling'] = Combobox(
-# 				self.frame,
-# 				state='readonly',
-# 				values=list(couplings.keys()),
-# 				textvariable=settings[f'ch{id}coupling'],
-# 				width=7
-# 				)
-# 		self.children['coupling'].grid(column=0, row=4, padx=THIN_PAD, sticky='nw')
-# 
-# 		self.children['analogOffset.label'] = Label(self.frame, text='Analog offset (mV)')
-# 		self.children['analogOffset.label'].grid(column=0, row=5, **lbf_contents_padding, sticky='nw')
-# 		self.children['analogOffset'] = Spinbox(
-# 				self.frame,
-# 				from_=0,
-# 				to=settings[f'ch{id}range'].get(),
-# 				textvariable=settings[f'ch{id}analogOffset'],
-# 				width=7,
-# 				increment=1
-# 				)
-# 		self.children['analogOffset'].grid(column=0, row=6, padx=THIN_PAD, sticky='nw')
-# 
-# 		self.children['bandwidth.label'] = Label(self.frame, text='Bandwidth')
-# 		self.children['bandwidth.label'].grid(column=0, row=7, **lbf_contents_padding, sticky='nw') 
-# 		self.children['bandwidth'] = Combobox(
-# 				self.frame,
-# 				state='readonly',
-# 				values=list(bandwidths.keys()),
-# 				textvariable=settings[f'ch{id}bandwidth'],
-# 				width=7
-# 				)
-# 		self.children['bandwidth'].grid(column=0, row=8, padx=THIN_PAD, sticky='nw')
-# 
-# 		self.children['enabled'].configure(
-# 			command=lambda: [toggle_widget_state(w, 'disabled' if settings[f'ch{id}enabled'].get() == 0 else '!disabled') for w in list(self.children.values())[1:]]
-# 			)
 
 class Histogram():
 	def __init__(
@@ -277,7 +215,7 @@ class Histogram():
 				initialdir=f'{PV_DIR}/Data',
 				filetypes=[('PNG', '*.png'), ('PDF', '*.pdf')]
 				)
-		plt.savefig(figureSavePath)
+		self.fig.savefig(figureSavePath)
 
 	def start(self, root: Tk, max_timeouts: int):
 		"""
@@ -487,7 +425,7 @@ def update_setting(
 	with open(f'{PV_DIR}/config.ini', 'r') as ini:
 		lines = ini.readlines()
 	for k, v in zip(keys, new_values):
-		print(f'{k}: {params[k]} -> {v}')
+		# print(f'{k}: {params[k]} -> {v}')
 		params[k] = v
 		for i, line in enumerate(lines):
 			if k in line:
@@ -495,15 +433,23 @@ def update_setting(
 				break
 	with open(f'{PV_DIR}/config.ini', 'w') as ini:
 		ini.writelines(lines)
-	print('Config updated.\n')
+	# print('Config updated.\n')
 
-def on_mode_change(mode: str, hist: Histogram) -> None:
+def on_mode_change(
+		mode: str,
+		hist: Optional[Histogram] = None,
+		hook_widgets: Optional[list[Widget]] = None
+		) -> None:
 	update_setting(['mode'], [mode])
-	hist.mode = mode
-	hist.create()
+	if hist is not None:
+		hist.mode = mode
+		hist.create()
+	if hook_widgets is not None:
+		for widget in hook_widgets:
+			toggle_widget_state(widget, state='disabled' if mode != 'adc' else 'normal')
 
-def toggle_widget_state(widget: Widget, state: str = '!disabled') -> None:
-	widget.state([state])
+def toggle_widget_state(widget: Widget, state: str = 'normal') -> None:
+	widget.configure(state=state)
 
 
 def main() -> None:
@@ -637,7 +583,7 @@ def main() -> None:
 
 	logFlag = IntVar(value=params['log'])
 	logCheckBox = Checkbutton(
-			summary, variable=logFlag, text='Log acquisition',
+			summary, variable=logFlag, text='Log acquisition', takefocus=0,
 			onvalue=1, offvalue=0, command=lambda: update_setting(['log'], [logFlag.get()])
 			)
 	logCheckBox.grid(column=0, row=14, columnspan=4, pady=(WIDE_PAD, 0), sticky='sw')
@@ -877,17 +823,25 @@ def main() -> None:
 		)
 	fileSettings.arrange()
 
+	modeVar.trace_add(  # Disable `includeAmplitude` and `includePeakToPeak` if not in ADC
+		'write',
+		lambda var, index, mode: on_mode_change(
+			modes[modeVar.get()], hook_widgets=[includeAmplitude, includePeakToPeak]
+			)
+		)
+
 	""" Apply settings button """
 	applySettingsBtn = Button(
 		settingsTab, text='Apply', takefocus=False, command=lambda: apply_changes(settings, applySettingsBtn)
 		)
-	applySettingsBtn.state(['disabled'])  # Will only be enabled if a setting is changed
+	applySettingsBtn.configure(state='disabled')  # Will only be enabled if a setting is changed
 	applySettingsBtn.grid(column=4, row=1, padx=0, pady=(0, WIDE_PAD), ipadx=THIN_PAD, ipady=THIN_PAD, sticky='se')
 
 	for variable in settings.values():  # Enable Apply button if any variable is changed
 		variable.trace_add('write', lambda var, index, mode: toggle_widget_state(applySettingsBtn))
 
 	root.center()
+	pyi_splash_close()  # Close splash screen when app has loaded
 	root.mainloop()
 
 if __name__ == '__main__':
