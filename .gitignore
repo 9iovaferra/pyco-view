@@ -1,8 +1,11 @@
 # Folders
 /Data
 **/__pycache__
+/build
 
 # Misc
+PycoView
+pycoview.desktop
 config.ini
 *.vim
 
