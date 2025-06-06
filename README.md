@@ -2,7 +2,7 @@
 Applicazione interattiva in Python per esperienze di rivelazione di raggi cosmici che sfruttano l'oscilloscopio **PicoScope 6404D**.
 
 ## Installazione
-Questa guida è dedicata all'installazione del solo file eseguibile dell'applicazione, pronta all'uso per esperienze di laboratorio. Per configurare un ambiente di sviluppo in cui modificare il codice sorgente di PycoView, si seguano i passaggi per il [setup dell'ambiente di sviluppo](setup-dell-ambiente-di-sviluppo-pycoview).
+Questa guida è dedicata all'installazione del solo file eseguibile dell'applicazione, pronta all'uso per esperienze di laboratorio. Per configurare un ambiente di sviluppo in cui modificare il codice sorgente di PycoView, si seguano i passaggi per il [setup dell'ambiente di sviluppo](#setup-dell-ambiente-di-sviluppo-pycoview).
 
 1. Per prima cosa, scaricare l'archivio dalla pagina [Releases](https://github.com/9iovaferra/pyco-view/releases/new) ed estrarlo in una cartella a piacere di cui si abbiano i permessi di lettura e scrittura.
 2. Eseguire con un doppio click il file `install.sh`: questo script si occupa di verificare che i driver PicoScope siano installati correttamente e di creare un collegamento nel menu applicazioni. Se i driver non risultano installati, vengono scaricati dalla repository di Picotech.
@@ -56,7 +56,7 @@ I **pacchetti Debian** per le librerie [libpicoipp_1.1.2-4r56_armhf.deb](https:/
 
 ### Installazione del Pico SDK (*Software Development Kit*)
 1. Navigare nella [repository ufficiale](https://github.com/picotech/picosdk-python-wrappers/tree/master?tab=readme-ov-file), scaricare l'intero master e decomprimerlo in una cartella a piacere.
-2. Navigare nella cartella appena installata e installare tutti i moduli necessari con (sostituire l'alias nel caso si sia scelto un nome diverso nel [Setup iniziale](#setup-iniziale)):
+2. Navigare nella cartella appena installata e installare tutti i moduli necessari con (sostituire l'alias nel caso si sia scelto un nome diverso in precedenza):
 	```bash
 	py -m pip install .
 	```
