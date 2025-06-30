@@ -87,8 +87,8 @@ class ADC:
 		self.probe = probe
 		self.timestamp: str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 		if self.params['log']:  # Creating loghandle if required
-			self.loghandle: str = f'adc_log_{self.timestamp}.txt'
-		self.datahandle: str = f"{PV_DIR}/Data/adc_data_{self.timestamp}.{self.params['dformat']}"
+			self.loghandle: str = f"{self.params['filename']}_{self.timestamp}_adc_log.txt"
+		self.datahandle: str = f"{PV_DIR}/Data/{self.params['filename']}_{self.timestamp}_data.{self.params['dformat']}"
 
 		self.chandle = c_int16()
 		self.status = {}

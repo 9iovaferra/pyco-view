@@ -83,8 +83,8 @@ class Meantimer:
 		self.probe = probe
 		self.timestamp: str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 		if self.params['log']:  # Creating loghandle if required
-			self.loghandle: str = f'mntm_log_{self.timestamp}.txt'
-		self.datahandle: str = f"{PV_DIR}/Data/mntm_data_{self.timestamp}.{self.params['dformat']}"
+			self.loghandle: str = f"{self.params['filename']}_{self.timestamp}_mntm_log.txt"
+		self.datahandle: str = f"{PV_DIR}/Data/{self.params['filename']}_{self.timestamp}_data.{self.params['dformat']}"
 
 		self.chandle = c_int16()
 		self.status = {}
@@ -220,14 +220,15 @@ class Meantimer:
 		err.append(self.__check_health(self.status['setTriggerChannelDirections']))
 
 		""" Get timebase info & pre/post trigger samples to be collected
-		handle:				chandle
-		timebase:			0=200ps, 1=400ps, 2=800ps, ...
-		noSamples:			maxSamples
-		intervalns:			timeIntervalns
-		oversample:			1
-		returnedMaxSamples: as the name implies
-		segmentIndex:		0
-		"""
+		ps.ps6000GetTimebase2(
+			handle:				chandle
+			timebase:			0=200ps, 1=400ps, 2=800ps, ...
+			noSamples:			maxSamples
+			intervalns:			timeIntervalns
+			oversample:			1
+			returnedMaxSamples: actual number of samples collected
+			segmentIndex:		0
+		) """
 		self.timeIntervalns = c_float()
 		returnedMaxSamples = c_int32()
 		self.status['getTimebase2'] = ps.ps6000GetTimebase2(
@@ -236,10 +237,9 @@ class Meantimer:
 			)
 		err.append(self.__check_health(self.status['getTimebase2']))
 
-		# """ Execution time benchmarking (see below) """
+		# """ Benchmarking """
 		# benchmark = Benchmark()
 		# benchmark = [0.0]
-		# benchmark[0] = get_time()
 
 		return err
 
@@ -344,14 +344,6 @@ class Meantimer:
 			if self.params['log'] and not self.probe:
 				to_be_logged.append('Skipping (trigger timeout).')
 			return None, [None]
-		# else:
-		# 	if self.params['log'] and not self.probe:
-		# 		""" Logging threshold hits """
-		# 		for g, id in zip(gate.values(), channelIDs):
-		# 			log(self.loghandle, f"gate {id} on: {g['open']['mV']:.2f}mV, \
-		# 				{g['open']['ns']:.2f}ns @ {g['open']['index']}",)
-		# 			log(self.loghandle, f"gate {id} off: {g['closed']['mV']:.2f}mV, \
-		# 				{g['closed']['ns']:.2f}ns @ {g['closed']['index']}")
 
 		""" Calculating relevant data """
 		data = []

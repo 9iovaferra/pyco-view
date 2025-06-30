@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 from typing import Union
 
+
 def plot_data(
 		bufferChAmV: Array[c_int16],
 		bufferChCmV: Array[c_int16],
@@ -99,8 +100,8 @@ class TDC:
 		self.probe = probe
 		self.timestamp: str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 		if self.params['log']:  # Creating loghandle if required
-			self.loghandle: str = f'tdc_log_{self.timestamp}.txt'
-		self.datahandle: str = f"{PV_DIR}/Data/tdc_data_{self.timestamp}.{self.params['dformat']}"
+			self.loghandle: str = f"{self.params['filename']}_{self.timestamp}_tdc_log.txt"
+		self.datahandle: str = f"{PV_DIR}/Data/{self.params['filename']}_{self.timestamp}_data.{self.params['dformat']}"
 
 		self.chandle = c_int16()
 		self.status = {}
@@ -252,9 +253,8 @@ class TDC:
 		err.append(self.__check_health(self.status['getTimebase2']))
 
 		# """ Benchmarking """
-		# benchmark = Benchmark()
-		# benchmark = [0.0]
-		# benchmark[0] = get_time()
+		# self.benchmark = Benchmark()
+		# self.benchmark.stopwatch = [0.0]
 
 		return err
 
@@ -353,14 +353,6 @@ class TDC:
 			if self.params['log'] and not self.probe:
 				to_be_logged.append('Skipping (trigger timeout).')
 			return None, [None]
-		# else:
-		# 	if self.params['log'] and not self.probe:
-		# 		""" Logging threshold hits """
-		# 		for g, id in zip(gate.values(), ['A', 'C']):
-		# 			log(self.loghandle, f"gate {id} on: {g['open']['mV']:.2f}mV, \
-		# 				{g['open']['ns']:.2f}ns @ {g['open']['index']}",)
-		# 			log(self.loghandle, f"gate {id} off: {g['closed']['mV']:.2f}mV, \
-		# 				{g['closed']['ns']:.2f}ns @ {g['closed']['index']}")
 
 		""" Calculating relevant data """
 		data = []
@@ -389,7 +381,7 @@ class TDC:
 			return figure, err
 
 		self.count += 1
-		# benchmark.split()
+		# self.benchmark.split()
 
 		return deltaT, err
 
@@ -404,7 +396,7 @@ class TDC:
 			return err
 
 		# """ Execution time benchmarking """
-		# benchmark.results()
+		# self.benchmark.results(unit="µs")
 
 		""" Logging exit status & data location """
 		if self.params['log'] and not self.probe:
