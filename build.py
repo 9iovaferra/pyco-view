@@ -1,14 +1,10 @@
 import PyInstaller.__main__ as pyi
 from pathlib import Path
 from shutil import copy2, move
-from os import remove, chmod
+from os import remove, chmod, listdir
 from pycoviewlib.constants import PV_DIR
+from zipfile import ZipFile, ZIP_DEFLATED
 
-# icon_folder = Path('~/.icons').expanduser()
-# app_folder = Path('~/.local/share/applications').expanduser()
-
-# icon_folder.mkdir(exist_ok=True)
-# app_folder.mkdir(exist_ok=True)
 
 print('Building PycoView with `pyinstaller`. This might take a minute...')
 pyi.run([
@@ -21,7 +17,7 @@ pyi.run([
 	'--distpath=./',
 	'--specpath=./build',
 	'--upx-dir=~/Documents/upx-5.0.1-arm64_linux/upx',
-	f'--splash={PV_DIR}/splash.png',
+	f'--splash={PV_DIR}/splash.jpg',
 	'--log-level=WARN'
 	])
 
@@ -44,8 +40,13 @@ with open('pycoview.desktop', 'w') as desktop_entry:
 	desktop_entry.writelines(info)
 
 chmod('pycoview.desktop', 0o644)
-# copy2(f'{PV_DIR}/pycoview.png', icon_folder)
-# copy2(f'{PV_DIR}/pycoview.desktop', f'{app_folder}/pycoview.desktop')
-# remove(f'{PV_DIR}/pycoview.desktop')
+
+print('Creating archive for distribution...')
+zf = ZipFile('PycoView_v0.1.zip', mode='w', compression=ZIP_DEFLATED, compresslevel=9)
+zf.write('PycoView')
+zf.write('pycoview.desktop')
+zf.write('install.sh')
+zf.testzip()
+zf.close()
 
 print('Done! Run `install.sh` to complete installation.')
