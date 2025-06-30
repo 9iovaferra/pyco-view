@@ -4,6 +4,7 @@ histBounds = 0,40
 histBins = 120
 log = 1
 plot = 0
+filename = group1
 dformat = txt
 includeCounter = 1
 includeAmplitude = 1
@@ -17,6 +18,7 @@ delaySeconds = 0
 autoTrigms = 10000
 preTrigSamples = 50
 postTrigSamples = 250
+maxTimeouts = 4
 
 [channelA]
 chAenabled = 1
