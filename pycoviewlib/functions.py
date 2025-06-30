@@ -34,22 +34,19 @@ def parse_config() -> dict:
 				params[p[0]] = int(p[1])
 			elif _isfloat(p[1]):
 				params[p[0]] = float(p[1])
-			elif p[1].isalpha():
+			elif p[1].isalpha() or p[0] == 'filename':
 				params[p[0]] = p[1]
 			else:
 				params[p[0]] = list(int(v) for v in p[1].split(','))
 	params['maxSamples'] = params['preTrigSamples'] + params['postTrigSamples']
-	# Convert target channels to list if more than one
-	# if len(params['target']) > 1:
-	# 	params['target'] = list(params['target'])
 
 	return params
 
 
 def parse_args(args: list) -> dict:
 	"""
+	[DEPRECATED used during development]
 	Parse command line arguments.
-	(Deprecated: it was used during development)
 	"""
 	options = dict.fromkeys([
 		'captures', 'plot', 'log', 'dformat', 'trigs', 'livehist'
@@ -138,10 +135,12 @@ def log(loghandle: str, entry: str, time=False) -> None:
 		else:
 			logfile.write(f"{' ' * 11}{entry}\n")  # 11 = len of timestamp
 
+
 # ------------------------- DATA CLASSES --------------------------
 
 @dataclass(order=True)
 class DataPack():
+	""" [DEPRECATED] Save data points to pickle file """
 	def __init__(self, x=0.0):
 		self.x = x
 
@@ -157,7 +156,7 @@ def get_timeinterval(timebase: int) -> str:
 
 class Manager():
 	"""
-	During acquisition, script listens for 'q' (quit) command from
+	[DEPRECATED] During acquisition, script listens for 'q' (quit) command from
 	GUI (Stop button was pressed)
 	"""
 	def __init__(self):
