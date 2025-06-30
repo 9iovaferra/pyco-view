@@ -5,9 +5,12 @@ tkSliderWidget Copyright (c) 2020, Mengxun Li
 from tkinter import Tk, Toplevel, Menu, IntVar, StringVar, PhotoImage
 from tkinter.filedialog import asksaveasfilename
 from tkinter.ttk import (
-	Widget, Label, Frame, Labelframe, Checkbutton, Button, Spinbox, OptionMenu, Notebook
+	Widget, Label, Frame, Labelframe, Entry, Checkbutton, Button, Spinbox, OptionMenu, Notebook
 	)
-from pyi_splash import close as pyi_splash_close  # Close splash screen when app has loaded
+try:
+	from pyi_splash import close as pyi_splash_close  # Close splash screen when app has loaded
+except ModuleNotFoundError:
+	pass
 from pycoviewlib.functions import parse_config, key_from_value, get_timeinterval
 from pycoviewlib.constants import *
 from pycoviewlib.gui_resources import *
@@ -142,11 +145,14 @@ class ChannelSettings():
 		self.frame.arrange()
 
 		self.frame.children[f'ch{name}enabled'][0].configure(
-			command=lambda: [
-				toggle_widget_state(w[0], 'disabled' if settings[f'ch{name}enabled'].get() == 0 else '!disabled') \
-					for w in list(self.frame.children.values())[1:]
-				]
+			command=lambda: self.toggle_channel_state(settings[f'ch{name}enabled'].get())
 			)
+		self.toggle_channel_state(params[f'ch{name}enabled'])
+	
+	def toggle_channel_state(self, enabled: int) -> None:
+		for w in list(self.frame.children.values())[1:]:
+			toggle_widget_state(w[0], 'disabled' if not enabled else '!disabled')
+
 
 class Histogram():
 	def __init__(
@@ -183,7 +189,7 @@ class Histogram():
 		if bounds is not None and bounds != self.xlim:
 			self.xlim = bounds
 			self.ax.set_xlim(bounds)
-			update_setting(['histBounds'], [f'{int(bounds[0])},{int(bounds[1])}'])
+			update_setting(root, ['histBounds'], [f'{int(bounds[0])},{int(bounds[1])}'])
 		else:
 			self.ax.set_xlim(self.xlim)
 
@@ -206,7 +212,7 @@ class Histogram():
 
 		if bins is not None and bins != self.bins:
 			self.bins = bins
-			update_setting(['histBins'], [bins])
+			update_setting(root, ['histBins'], [bins])
 
 		self.canvas.draw()
 
@@ -385,9 +391,18 @@ def probe_pico(root: Tk, mode: str, max_timeouts: int) -> None:
 		probe_window.title('Probe')
 		probe_canvas = FigureCanvasTkAgg(figure, master=probe_window)
 		probe_canvas.get_tk_widget().pack()
+		save_as = Button(probe_window, text='Save as...', width=9, command=lambda : saveas(figure))
+		save_as.pack()
+
+	def saveas(fig) -> None:
+		figureSavePath = asksaveasfilename(
+				initialdir=f'{PV_DIR}/Data',
+				filetypes=[('PNG', '*.png'), ('PDF', '*.pdf')]
+				)
+		fig.savefig(figureSavePath)
 
 
-def apply_changes(settings: dict, apply_btn: Button) -> None:
+def apply_changes(root: Tk, settings: dict, apply_btn: Button) -> None:
 	""" Compares `settings` against `params`,
 	sends updated values to `update_setting()` """
 	keys = []
@@ -411,10 +426,11 @@ def apply_changes(settings: dict, apply_btn: Button) -> None:
 			values.append(new_value)
 			update = True
 	if update:
-		update_setting(keys, values)
+		update_setting(root, keys, values)
 	apply_btn.state(['disabled'])
 
 def update_setting(
+		root: Tk,
 		keys: list[str],
 		new_values: list[Union[str, int, float]]
 		) -> None:
@@ -425,7 +441,6 @@ def update_setting(
 	with open(f'{PV_DIR}/config.ini', 'r') as ini:
 		lines = ini.readlines()
 	for k, v in zip(keys, new_values):
-		# print(f'{k}: {params[k]} -> {v}')
 		params[k] = v
 		for i, line in enumerate(lines):
 			if k in line:
@@ -433,7 +448,7 @@ def update_setting(
 				break
 	with open(f'{PV_DIR}/config.ini', 'w') as ini:
 		ini.writelines(lines)
-	# print('Config updated.\n')
+	root.update_idletasks()
 
 def on_mode_change(
 		mode: str,
@@ -475,27 +490,44 @@ def main() -> None:
 		print("(!) Cannot write to {pv_data_folder}!")
 		return
 
-	""" Main window & menu bar """
+	""" Main window """
 	root: Tk = RootWindow()
 
 	global settings
 	settings = {
+		'filename': StringVar(value=params['filename']),
 		'target': StringVar(value=''.join(params['target'])),
 		'maxTimeouts': IntVar(value=params['maxTimeouts'])
 		}
 
 	topFrame = Frame(root, padding=(THIN_PAD, 0, THIN_PAD, THIN_PAD))
 	topFrame.grid(column=0, row=0, padx=WIDE_PAD, pady=(WIDE_PAD, 0), sticky='new')
-	topFrame.columnconfigure(3, weight=3)
+	topFrame.columnconfigure(2, weight=3)
 
 	# Mode selector was moved *after* histogram creation because it needs Histogram instance
+
+	def validate_filename(entry: str) -> bool:
+		valid: bool = entry == '' or not any(char in entry for char in r'<>:"/\|?*. ')
+		return valid
+
+	Label(topFrame, text='Filename:', anchor='e').grid(column=2, row=0, padx=(0, WIDE_PAD), pady=THIN_PAD, sticky='ne')
+	filename = Entry(
+			topFrame,
+			textvariable=settings['filename'],
+			exportselection=0,
+			width=22,
+			validate='key',
+			validatecommand=(root.register(validate_filename), '%P')
+			)
+	filename.grid(column=3, row=0, pady=THIN_PAD, sticky='ne')
+	filename.bind('<FocusOut>', lambda _: update_setting(['filename'], [settings['filename'].get()]))
+	# Label(topFrame, text=f".{params['dformat']}").grid(column=4, row=0, pady=THIN_PAD, sticky='ne')
 
 	""" Tabs """
 	tabsFrame = Frame(root, padding=(THIN_PAD,0,THIN_PAD,THIN_PAD))
 	tabsFrame.grid(column=0, row=1, **uniform_padding, sticky='nesw')
 	tabControl = Notebook(tabsFrame)
 	runTab = Frame(tabControl, padding=(0, 0))
-	# tabControl.bind('<<NotebookTabChanged>>', lambda _: refresh_run_tab(event, runTab))
 	settingsTab = Frame(tabControl, padding=(0, 0))
 	settingsTab.rowconfigure(0, weight=1)
 	settingsTab.rowconfigure(1, weight=1)
@@ -530,7 +562,7 @@ def main() -> None:
 			summary, text=ch, background=color if params[f'ch{ch}enabled'] else 'gray63',
 			foreground='white' if params[f'ch{ch}enabled'] else 'light gray', anchor='e'
 			).grid(column=i, row=0, padx=0 if i == 1 else (THIN_PAD, 0), pady=(WIDE_PAD, 0), sticky='we')
-	for i, entry in enumerate(['Range (mV)', 'Analog offset (mV)', 'Coupling', 'Trigger target']):
+	for i, entry in enumerate(['Range (mV)', 'Offset (mV)', 'Coupling', 'Trigger target']):
 		Label(summary, text=entry).grid(
 				column=0, row=i + 1, padx=(THIN_PAD, 0), pady=(WIDE_PAD if i == 0 else LINE_PAD, 0), sticky='w'
 				)
@@ -792,7 +824,7 @@ def main() -> None:
 		settings[f'ch{id}coupling'] = chSettings.frame.variables[f'ch{id}coupling']
 		settings[f'ch{id}analogOffset'] = chSettings.frame.variables[f'ch{id}analogOffset']
 		settings[f'ch{id}bandwidth'] = chSettings.frame.variables[f'ch{id}bandwidth']
-
+	
 	""" File settings """
 	fileSettings = PVLabelframe(
 		settingsTab, title='Data file', col=1, row=1, size=(1, 6), cspan=1,
@@ -811,10 +843,12 @@ def main() -> None:
 		id='amplitude', prompt='Amplitude', default=params['includeAmplitude'], on_off=(1, 0)
 		)
 	settings['includeAmplitude'] = fileSettings.get_raw('amplitude')
+	toggle_widget_state(includeAmplitude, state='disabled' if modes[modeVar.get()] != 'adc' else 'normal')
 	includePeakToPeak = fileSettings.add_checkbutton(
 		id='peakToPeak', prompt='Peak-to-peak', default=params['includePeakToPeak'], on_off=(1, 0)
 		)
 	settings['includePeakToPeak'] = fileSettings.get_raw('peakToPeak')
+	toggle_widget_state(includePeakToPeak, state='disabled' if modes[modeVar.get()] != 'adc' else 'normal')
 
 	fileSettings.group(
 		id='includedData',
@@ -832,7 +866,7 @@ def main() -> None:
 
 	""" Apply settings button """
 	applySettingsBtn = Button(
-		settingsTab, text='Apply', takefocus=False, command=lambda: apply_changes(settings, applySettingsBtn)
+		settingsTab, text='Apply', takefocus=False, command=lambda: apply_changes(root, settings, applySettingsBtn)
 		)
 	applySettingsBtn.configure(state='disabled')  # Will only be enabled if a setting is changed
 	applySettingsBtn.grid(column=4, row=1, padx=0, pady=(0, WIDE_PAD), ipadx=THIN_PAD, ipady=THIN_PAD, sticky='se')
@@ -841,7 +875,10 @@ def main() -> None:
 		variable.trace_add('write', lambda var, index, mode: toggle_widget_state(applySettingsBtn))
 
 	root.center()
-	pyi_splash_close()  # Close splash screen when app has loaded
+	try:
+		pyi_splash_close()  # Close splash screen when app has loaded
+	except NameError:
+		pass
 	root.mainloop()
 
 if __name__ == '__main__':
