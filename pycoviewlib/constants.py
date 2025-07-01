@@ -1,7 +1,7 @@
 from picosdk.ps6000 import ps6000 as ps
 from pathlib import Path
 
-PV_DIR = Path('~/Documents/pyco-view/').expanduser()
+PV_DIR = Path('~/Documents/PycoView/').expanduser()
 PYTHON = Path('~/.venv/bin/python3').expanduser()
 
 chInputRanges = [
