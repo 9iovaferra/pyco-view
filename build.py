@@ -1,7 +1,5 @@
 import PyInstaller.__main__ as pyi
-from pathlib import Path
-from shutil import copy2, move
-from os import remove, chmod, listdir
+from shutil import rmtree
 from pycoviewlib.constants import PV_DIR
 from zipfile import ZipFile, ZIP_DEFLATED
 
@@ -21,32 +19,16 @@ pyi.run([
 	'--log-level=WARN'
 	])
 
-with open('pycoview.desktop', 'w') as desktop_entry:
-	info = [
-		'[Desktop Entry]\n',
-		'Type=Application\n',
-		'Name[it]=PycoView\n',
-		'Name[en]=PycoView\n',
-		'Comment[it]=Applicazione interattiva in Python per lo studio dei raggi cosmici\n',
-		'Comment[en]=Interactive Python app for the study of cosmic rays\n',
-		f'Path={PV_DIR}\n',
-		f'Exec={PV_DIR}/PycoView\n',
-		'Icon=pycoview\n'
-		'Terminal=false\n',
-		'Categories=Education;Science;\n',
-		'Keywords[it]=Python;Fisica;Raggi cosmici;\n',
-		'Keywords[en]=Python;Physics;Cosmic rays;\n'
-		]
-	desktop_entry.writelines(info)
-
-chmod('pycoview.desktop', 0o644)
-
 print('Creating archive for distribution...')
 zf = ZipFile('PycoView_v0.1.zip', mode='w', compression=ZIP_DEFLATED, compresslevel=9)
-zf.write('PycoView')
-zf.write('pycoview.desktop')
+zf.write('PycoView', arcname='PycoView/PycoView')
+zf.write('pycoview.png', arcname='PycoView/pycoview.png')
+zf.write('backup/config.ini.bak', arcname='PycoView/backup/config.ini.bak')
 zf.write('install.sh')
 zf.testzip()
 zf.close()
+
+print('Cleaning up...')
+rmtree('build/')
 
 print('Done! Run `install.sh` to complete installation.')
