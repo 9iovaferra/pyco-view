@@ -4,7 +4,7 @@ Applicazione interattiva in Python per esperienze di rivelazione di raggi cosmic
 ## Installazione
 Questa guida è dedicata all'installazione del solo file eseguibile dell'applicazione, pronta all'uso per esperienze di laboratorio. Per configurare un ambiente di sviluppo in cui modificare il codice sorgente di PycoView, si seguano i passaggi per il [setup dell'ambiente di sviluppo](#setup-dell-ambiente-di-sviluppo-pycoview).
 
-1. Per prima cosa, scaricare l'archivio dalla pagina [Releases](https://github.com/9iovaferra/pyco-view/releases/new) ed estrarlo in una cartella a piacere di cui si abbiano i permessi di lettura e scrittura.
+1. Per prima cosa, scaricare l'archivio dalla pagina [Releases](https://github.com/9iovaferra/pyco-view/releases/new) ed estrarlo in `~/Documents/`.
 2. Eseguire con un doppio click il file `install.sh`: questo script si occupa di verificare che i driver PicoScope siano installati correttamente e di creare un collegamento nel menu applicazioni. Se i driver non risultano installati, vengono scaricati dalla repository di Picotech.
 
 ## Setup dell'ambiente di sviluppo PycoView
