@@ -242,7 +242,7 @@ class Histogram():
 				self.applet = mntm.Meantimer(params)
 		err = self.applet.setup()
 		if not all([e is None for e in err]):
-			pvStatus.set(f'(!) {e for e in err if e is not None}')
+			pvStatus.set(f'(!) {", ".join([e for e in err if e is not None])}')
 			return
 		# timestamp: str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 		# if params['log']:  # Creating loghandle if required
