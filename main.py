@@ -861,42 +861,27 @@ def main() -> None:
     def target_selection(flags: list[tk.StringVar], targets: tk.StringVar) -> None:
         targets.set(flags[0].get() + flags[1].get() + flags[2].get() + flags[3].get())
 
+    centered_frame = Frame(settingsTab)
+    centered_frame.place(in_=settingsTab, anchor='c', relx=.5, rely=.5)
+
+    lbf_padding_v = {
+        'padx': 0, 'pady': gui.WIDE_PAD, 'ipadx': gui.THIN_PAD, 'ipady': gui.THIN_PAD
+    }
     triggerSettings = gui.PVLabelframe(
-        settingsTab, title='Trigger', col=0, row=0, size=(2, 18), rspan=2, sticky='nsw'
-        )
+        centered_frame, title='Trigger', col=0, row=0, size=(2, 14), rspan=2,
+        padding=lbf_padding_v, sticky='nsw'
+    )
     targetFlags = [tk.StringVar(value='') for _ in range(4)]
-    triggerSettings.add_checkbutton(
-        id='chAenabled',
-        prompt='A',
-        on_off=('A', ''),
-        default='A' if 'A' in settings['target'].get() else '',
-        command=lambda: target_selection(targetFlags, settings['target'])
+
+    for i, name in enumerate(channelIDs):
+        triggerSettings.add_checkbutton(
+            id=f'ch{name}enabled',
+            prompt=f'{name}',
+            on_off=(f'{name}', ''),
+            default=f'{name}' if f'{name}' in settings['target'].get() else '',
+            command=lambda: target_selection(targetFlags, settings['target'])
         )
-    targetFlags[0] = triggerSettings.variables['chAenabled']
-    triggerSettings.add_checkbutton(
-        id='chBenabled',
-        prompt='B',
-        on_off=('B', ''),
-        default='B' if 'B' in settings['target'].get() else '',
-        command=lambda: target_selection(targetFlags, settings['target'])
-        )
-    targetFlags[1] = triggerSettings.variables['chBenabled']
-    triggerSettings.add_checkbutton(
-        id='chCenabled',
-        prompt='C',
-        on_off=('C', ''),
-        default='C' if 'C' in settings['target'].get() else '',
-        command=lambda: target_selection(targetFlags, settings['target'])
-        )
-    targetFlags[2] = triggerSettings.variables['chCenabled']
-    triggerSettings.add_checkbutton(
-        id='chDenabled',
-        prompt='D',
-        on_off=('D', ''),
-        default='D' if 'D' in settings['target'].get() else '',
-        command=lambda: target_selection(targetFlags, settings['target'])
-        )
-    targetFlags[3] = triggerSettings.variables['chDenabled']
+        targetFlags[i] = triggerSettings.variables[f'ch{name}enabled']
 
     triggerSettings.add_spinbox(
         id='preTrigSamples',
@@ -904,7 +889,7 @@ def main() -> None:
         step=1,
         default=params['preTrigSamples'],
         prompt='Pre-trigger samples'
-        )
+    )
     settings['preTrigSamples'] = triggerSettings.variables['preTrigSamples']
 
     triggerSettings.add_spinbox(
@@ -913,7 +898,7 @@ def main() -> None:
         step=1,
         default=params['postTrigSamples'],
         prompt='Post-trigger samples'
-        )
+    )
     settings['postTrigSamples'] = triggerSettings.variables['postTrigSamples']
 
     triggerSettings.add_spinbox(
@@ -922,7 +907,7 @@ def main() -> None:
         step=1,
         prompt='Timebase',
         default=params['timebase']
-        )
+    )
     settings['timebase'] = triggerSettings.variables['timebase']
 
     triggerSettings.add_spinbox(
@@ -931,7 +916,7 @@ def main() -> None:
         step=1,
         prompt='Threshold (mV)',
         default=int(params['thresholdmV'])
-        )
+    )
     settings['thresholdmV'] = triggerSettings.variables['thresholdmV']
 
     triggerSettings.add_spinbox(
@@ -940,7 +925,7 @@ def main() -> None:
         step=100,
         prompt='Auto trigger (ms)',
         default=params['autoTrigms']
-        )
+    )
     settings['autoTrigms'] = triggerSettings.variables['autoTrigms']
 
     triggerSettings.add_spinbox(
@@ -949,7 +934,7 @@ def main() -> None:
         step=1,
         prompt='Trigger delay (s)',
         default=params['delaySeconds']
-        )
+    )
     settings['delaySeconds'] = triggerSettings.variables['delaySeconds']
 
     triggerSettings.add_spinbox(
@@ -958,7 +943,7 @@ def main() -> None:
         step=1,
         prompt='Max. timeouts',
         default=params['maxTimeouts']
-        )
+    )
     settings['maxTimeouts'] = triggerSettings.variables['maxTimeouts']
 
     triggerSettings.group(
@@ -966,14 +951,14 @@ def main() -> None:
         members=['chAenabled', 'chBenabled', 'chCenabled', 'chDenabled'],
         name='Target(s)',
         cspan=2
-        )
+    )
     triggerSettings.arrange()
 
     """ Channels settings """
-    chASettings = ChannelSettings(settingsTab, name='A', col=1, row=0)
-    chBSettings = ChannelSettings(settingsTab, name='B', col=2, row=0)
-    chCSettings = ChannelSettings(settingsTab, name='C', col=3, row=0)
-    chDSettings = ChannelSettings(settingsTab, name='D', col=4, row=0)
+    chASettings = ChannelSettings(centered_frame, name='A', col=1, row=0)
+    chBSettings = ChannelSettings(centered_frame, name='B', col=2, row=0)
+    chCSettings = ChannelSettings(centered_frame, name='C', col=3, row=0)
+    chDSettings = ChannelSettings(centered_frame, name='D', col=4, row=0)
 
     for id, chSettings in zip(channelIDs, [chASettings, chBSettings, chCSettings, chDSettings]):
         settings[f'ch{id}enabled'] = chSettings.frame.variables[f'ch{id}enabled']
@@ -984,14 +969,9 @@ def main() -> None:
     
     """ File settings """
     fileSettings = gui.PVLabelframe(
-        settingsTab, title='Data file', col=1, row=1, size=(1, 6), cspan=1,
+        centered_frame, title='Data file', col=1, row=1, size=(2, 3), cspan=2,
         padding=gui.lbf_asym_padding_no_top, sticky='nesw'
     )
-    fileSettings.add_optionmenu(
-        id='dataFileType', prompt='Save data as', default=params['dformat'], options=dataFileTypes
-    )
-    settings['dformat'] = fileSettings.get_raw('dataFileType')
-
     fileSettings.add_checkbutton(
         id='count', prompt='Counter', default=params['includeCounter'], on_off=(1, 0)
     )
@@ -1010,11 +990,16 @@ def main() -> None:
     toggle_widget_state(
         includePeakToPeak, state='disabled' if modes[modeVar.get()] != 'adc' else 'normal'
     )
+    fileSettings.add_optionmenu(
+        id='dataFileType', prompt='Save data as', default=params['dformat'], options=dataFileTypes
+    )
+    settings['dformat'] = fileSettings.get_raw('dataFileType')
 
     fileSettings.group(
         id='includedData',
         members=['count', 'amplitude', 'peakToPeak'],
-        name='Data included in file'
+        name='Data included in file',
+        cspan=1
     )
     fileSettings.arrange()
 
@@ -1027,7 +1012,7 @@ def main() -> None:
 
     """ Apply settings button """
     applySettingsBtn = Button(
-        settingsTab,
+        centered_frame,
         text='Apply',
         takefocus=False,
         command=lambda: apply_changes(settings, applySettingsBtn)
