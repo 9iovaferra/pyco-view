@@ -5,7 +5,8 @@ tkSliderWidget Copyright (c) 2020, Mengxun Li
 import tkinter as tk
 from tkinter.filedialog import asksaveasfilename
 from tkinter.ttk import (
-    Widget, Label, Frame, Labelframe, Entry, Checkbutton, Button, Spinbox, OptionMenu, Notebook
+    Widget, Label, Frame, Labelframe, Entry, Checkbutton, Button, Spinbox,
+    OptionMenu, Notebook, Scrollbar
 )
 try:
     from pyi_splash import close as pyi_splash_close  # Close splash screen when app has loaded
@@ -41,7 +42,7 @@ class RootWindow(tk.Tk):
         self.wm_iconphoto(False, dockIcon)
         self.protocol('WM_DELETE_WINDOW', self.delete_window)
 
-        self.menu_bar = tk.Menu(self)
+        self.menu_bar = tk.Menu(self, relief='flat', bd=0)
         self.config(menu=self.menu_bar)
         self.file_menu = tk.Menu(self.menu_bar, tearoff=0)
         self.menu_bar.add_cascade(menu=self.file_menu, label='File')
@@ -86,6 +87,44 @@ class RootWindow(tk.Tk):
             lines = ini.readlines()
         with open(f'{PV_DIR}/config.ini', 'w') as ini:
             ini.writelines(lines)
+
+    def error_window(self, errors: list[str]) -> None:
+        err_win = tk.Toplevel()
+        err_win.resizable(0, 0)
+        err_win.after(0, self.hide())
+        err_win.title('Error')
+        frame = Frame(err_win, padding=(gui.WIDE_PAD, gui.WIDE_PAD, gui.WIDE_PAD, gui.WIDE_PAD))
+        frame.grid(row=0, column=0, sticky='nesw')
+        Label(
+            frame,
+            text='One or more error(s) occurred.',
+            anchor='nw',
+        ).grid(row=0, column=0, pady=(0, gui.WIDE_PAD), sticky='nw')
+        text = tk.Listbox(frame, font=('Segoe Ui', '10'), width=40, height=10)
+        text.configure(exportselection=0, activestyle='none')  # This doesn't work?
+        scrollb_v = Scrollbar(frame, command=text.yview, orient='vertical')
+        scrollb_h = Scrollbar(frame, command=text.xview, orient='horizontal')
+        text.configure(yscrollcommand=scrollb_v.set, xscrollcommand=scrollb_h.set)
+        scrollb_v.grid(row=1, column=1, sticky='ns')
+        scrollb_h.grid(row=2, column=0, sticky='ew')
+        text.grid(row=1, column=0, sticky='nesw')
+        for err in errors:
+            text.insert(tk.END, err)
+        buttons_frame = Frame(frame, padding=(0, gui.THIN_PAD, 0, 0))
+        buttons_frame.grid(row=3, column=0, columnspan=2, sticky='nse')
+        help_button = Button(
+            buttons_frame, text='Help', width=7,
+            command=lambda: open_new(
+                'https://www.picotech.com/download/manuals/picoscope-6000-series-programmers-guide.pdf'
+            )
+        )
+        close_button = Button(
+            buttons_frame, text='Close', width=7,
+            command=err_win.destroy
+        )
+        help_button.grid(row=0, column=0, padx=(0, gui.THIN_PAD), sticky='nse')
+        close_button.grid(row=0, column=1, sticky='nse')
+        self.center(target=err_win)
 
     def open_about_window(self) -> None:
         about = tk.Toplevel()
@@ -382,6 +421,7 @@ class Histogram():
         self.root.quit()
         self.root.destroy()
 
+
 def probe_pico(root: tk.Tk, mode: str, max_timeouts: int) -> None:
     pvStatus.set('Probing PicoScope...')
     root.update_idletasks()
@@ -395,7 +435,8 @@ def probe_pico(root: tk.Tk, mode: str, max_timeouts: int) -> None:
             applet = mntm.Meantimer(params, probe=True)
     err = applet.setup()
     if not all([e is None for e in err]):
-        pvStatus.set(f"(!) {','.join([e for e in err if e is not None])}")
+        root.error_window(errors=err)
+        pvStatus.set('Error!')
         return
     figure = None
     timeout = max_timeouts
@@ -412,7 +453,8 @@ def probe_pico(root: tk.Tk, mode: str, max_timeouts: int) -> None:
             root.update_idletasks()
         timeout -= 1
     if not all([e is None for e in err]):
-        pvStatus.set(f"(!) {','.join([e for e in err if e is not None])}")
+        root.error_window(errors=err)
+        pvStatus.set('Error!')
     err = applet.stop()
     if timeout != 0:
         pvStatus.set('Idle' if err is None else f'(!) {err}')  # Doesn't overwrite max timeouts warning
@@ -524,6 +566,7 @@ def main() -> None:
         pv_data_folder: Path = Path(f'{PV_DIR}/Data').expanduser()
         pv_data_folder.mkdir(exist_ok=True)
     except PermissionError:
+        # TODO: write this to pvStatus & err_win
         print(f'(!) Cannot write to {pv_data_folder}!')
         return
 
