@@ -108,12 +108,12 @@ class PVLabelframe(Labelframe):
             ) -> None:
         # print(f'{self.auto_pos_x=}\t{self.auto_pos_y=}')
         grid_kwargs = {
-                'column': self.auto_pos_x,
-                'row': self.auto_pos_y,
-                'sticky': 'nw' if sticky is None else sticky,
-                'padx': (0, 0),
-                'pady': (0, 0)
-                }
+            'column': self.auto_pos_x,
+            'row': self.auto_pos_y,
+            'sticky': 'nw' if sticky is None else sticky,
+            'padx': (0, 0),
+            'pady': (0, 0)
+        }
         grid_kwargs.update(padding if padding is not None else lbf_contents_padding)
         # if padding is None and self.auto_pos_y > 0:  # Larger space between elements
         #   grid_kwargs['pady'] = (WIDE_PAD, 0)
@@ -359,7 +359,7 @@ class PVLabelframe(Labelframe):
                 # padding=padding if padding is not None else lbf_contents_padding,
                 padding=padding,
                 sticky=sticky
-                )
+            )
             members.insert(0, group_name_id)
             # Find first member's row and swap it with the title
             first_member_row = min([self.children[m][1]['row'] for m in members][1:])
@@ -375,11 +375,19 @@ class PVLabelframe(Labelframe):
         columnspan = (self.auto_pos_y + 1 + n_members) // self.maxrow + 1 if cspan is None else cspan
         # print(f'{columnspan=}')
         if columnspan > 1:  # Set columnspan for all widgets in the same column as the group
+            self.maxcol += 1
+            # self.auto_pos_x += columnspan - 1
+            self.auto_pos_y -= 1
+            # Iterate over all widgets that are NOT group members
             for c in set(self.children).symmetric_difference(members[1:]):
-                # print(f'\t{c=}')
+                # Move up all widgets after group but in the same column
+                if self.children[c][1]['row'] > self.children[members[1]][-1]['row'] \
+                        and self.children[c][1]['column'] == self.children[members[0]][1]['column']:
+                    self.children[c][1]['row'] -= 1
                 if self.children[c][1]['column'] == self.children[members[1]][1]['column']:
                     self.children[c][1]['columnspan'] = columnspan
-            self.auto_pos_y -= 1
+                if self.children[c][1]['column'] >= columnspan - 1:
+                    self.children[c][1]['column'] += 1
 
         new_col = False
         for m in members[1:]:  # Treating group as a frame on its own
