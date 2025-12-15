@@ -12,7 +12,7 @@ try:
     from pyi_splash import close as pyi_splash_close  # Close splash screen when app has loaded
 except ModuleNotFoundError:
     pass
-from pycoviewlib.functions import parse_config, key_from_value, get_timeinterval
+from pycoviewlib.functions import parse_config, backup_config, key_from_value, get_timeinterval
 from pycoviewlib.constants import (
     PV_DIR, channelIDs, dataFileTypes, modes, couplings, bandwidths, chInputRanges
 )
@@ -48,7 +48,7 @@ class RootWindow(tk.Tk):
         self.menu_bar.add_cascade(menu=self.file_menu, label='File')
         self.file_menu.add_command(label='Open data folder', command=self.show_data_folder)
         self.file_menu.add_separator()
-        self.file_menu.add_command(label='Generate config file', command=self.generate_config)
+        # self.file_menu.add_command(label='Generate config file', command=self.generate_config)
         self.help_menu = tk.Menu(self.menu_bar, tearoff=0)
         self.menu_bar.add_cascade(menu=self.help_menu, label='Help')
         self.help_menu.add_command(label='About', command=self.open_about_window)
@@ -77,16 +77,6 @@ class RootWindow(tk.Tk):
     def show_data_folder(self) -> None:
         datapath = Path(f'{PV_DIR}/Data')
         system(f'xdg-open {datapath}')
-
-    def generate_config(self) -> None:
-        """
-        Pulls settings from backup and creates new (or overwrites
-        existing) config.ini
-        """
-        with open(f'{PV_DIR}/backup/config.ini.bak', 'r') as ini:
-            lines = ini.readlines()
-        with open(f'{PV_DIR}/config.ini', 'w') as ini:
-            ini.writelines(lines)
 
     def error_window(self, errors: list[str]) -> None:
         err_win = tk.Toplevel()
@@ -549,6 +539,7 @@ def main() -> None:
     """ Reading runtime parameters from .ini file """
     global params  # dict[str, Union[int, float, str]]
     params = parse_config()
+    backup_config()
 
     # make this section oneliners
     param_offsets: list[float] = []
