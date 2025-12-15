@@ -217,7 +217,7 @@ class Histogram():
         self.mode = mode
         self.buffer = []
         self.follower = None
-        self.fig, self.ax = plt.subplots(figsize=(6, 4), layout='tight')
+        self.fig, self.ax = plt.subplots(figsize=(6, 4.2), layout='tight')
         self.bins = bins
         self.xlim = xlim
         self.ylim = ylim if ylim is not None else [0, 15]
@@ -514,9 +514,14 @@ def update_setting(
                 break
     with open(f'{PV_DIR}/config.ini', 'w') as ini:
         ini.writelines(lines)
+
+    for k, v in zip(keys, new_values):
+        if 'chArange' in k:
+            ui_textvar['range'][0].set(f'±{chInputRanges[params[k]]}')
     
     if root is not None:
         root.update_idletasks()
+
 
 def on_mode_change(
         mode: str,
@@ -536,6 +541,11 @@ def toggle_widget_state(widget: Widget, state: str = 'normal') -> None:
 
 
 def main() -> None:
+    """ Main window """
+    root: tk.Tk = RootWindow()
+    root.tk.call('source', 'pycoviewlib/ttkAzure/azure.tcl')
+    root.tk.call('set_theme', 'light')
+
     """ Reading runtime parameters from .ini file """
     global params  # dict[str, Union[int, float, str]]
     params = parse_config()
@@ -558,19 +568,32 @@ def main() -> None:
         pv_data_folder.mkdir(exist_ok=True)
     except PermissionError:
         # TODO: write this to pvStatus & err_win
-        print(f'(!) Cannot write to {pv_data_folder}!')
-        return
-
-    """ Main window """
-    root: tk.Tk = RootWindow()
-    root.tk.call('source', 'pycoviewlib/ttkAzure/azure.tcl')
-    root.tk.call('set_theme', 'light')
+        root.error_window(errors=[f'Cannot write to {pv_data_folder}!'])
 
     global settings  # Stores Tkinter variables linked to widgets
     settings = {
         'filename': tk.StringVar(value=params['filename']),
+        'dformat': tk.StringVar(value=params['dformat']),
         'target': tk.StringVar(value=''.join(params['target'])),
-        'maxTimeouts': tk.IntVar(value=params['maxTimeouts'])
+        'maxTimeouts': tk.IntVar(value=params['maxTimeouts']),
+    }
+
+    """ 'ui_textvar' is a container of 'StringVar' or 'IntVar' objects used to
+    update the UI as settings are changed. The 'refresh_run_tab' function takes
+    care of setting the new values so that the UI reflects said changes. """
+    global ui_textvar
+    ui_textvar = {
+        'range': [tk.StringVar(value=f'±{r}') for r in param_ranges],
+        'analogOffset': [tk.IntVar(value=int(o * 1000)) for o in param_offsets],
+        'coupling': [tk.StringVar(value=c) for c in param_couplings],
+        'target': [tk.StringVar(value=u'\u25cF' if ch in params['target'] else u'\u25cB') for ch in channelIDs],
+        'timebase': tk.StringVar(value=get_timeinterval(params['timebase'])),
+        'thresholdmV': tk.StringVar(value=f"{params['thresholdmV']:.0f} mV"),
+        'delaySeconds': tk.StringVar(value=f"{params['delaySeconds']} s"),
+        'autoTrigms': tk.StringVar(value=f"{params['autoTrigms']} ms"),
+        'maxTimeouts': tk.StringVar(value=f"{params['maxTimeouts']}"),
+        'preTrigSamples': tk.StringVar(value=f"{params['preTrigSamples']}"),
+        'postTrigSamples': tk.StringVar(value=f"{params['postTrigSamples']}"),
     }
 
     topFrame = Frame(root, padding=(gui.THIN_PAD, 0, gui.THIN_PAD, gui.THIN_PAD))
@@ -584,7 +607,7 @@ def main() -> None:
         return valid
 
     Label(topFrame, text='Filename:', anchor='e').grid(
-        column=2, row=0, padx=(0, gui.WIDE_PAD), pady=gui.THIN_PAD, sticky='ne'
+        column=2, row=0, padx=(0, gui.WIDE_PAD), pady=gui.WIDE_PAD, sticky='ne'
     )
     filename = Entry(
         topFrame,
@@ -596,7 +619,6 @@ def main() -> None:
     )
     filename.grid(column=3, row=0, pady=gui.THIN_PAD, sticky='ne')
     filename.bind('<FocusOut>', lambda _: update_setting(['filename'], [settings['filename'].get()]))
-    Label(topFrame, text=f".{params['dformat']}").grid(column=4, row=0, pady=gui.THIN_PAD, sticky='ne')
 
     """ Tabs """
     tabsFrame = Frame(root, padding=(gui.THIN_PAD, 0, gui.THIN_PAD, gui.THIN_PAD))
@@ -614,28 +636,12 @@ def main() -> None:
     summary = Labelframe(runTab, text='Summary')
     summary.grid(column=0, row=0, columnspan=3, **gui.lbf_asym_padding, sticky='nesw')
 
-    """ Summary labelframe contents.
-    'summary_textvar' is a container of 'StringVar' or 'IntVar' objects used to update the UI
-    as settings are changed. The 'refresh_run_tab' function takes care of setting the
-    new values so that the UI reflects said changes. """
-    summary_textvar = {
-        'range': [tk.StringVar(value=f'±{r}') for r in param_ranges],
-        'analogOffset': [tk.IntVar(value=int(o * 1000)) for o in param_offsets],
-        'coupling': [tk.StringVar(value=c) for c in param_couplings],
-        'target': [tk.StringVar(value=u'\u25cF' if ch in params['target'] else u'\u25cB') for ch in channelIDs],
-        'timebase': tk.StringVar(value=get_timeinterval(params['timebase'])),
-        'thresholdmV': tk.StringVar(value=f"{params['thresholdmV']:.0f} mV"),
-        'delaySeconds': tk.StringVar(value=f"{params['delaySeconds']} s"),
-        'autoTrigms': tk.StringVar(value=f"{params['autoTrigms']} ms"),
-        'maxTimeouts': tk.StringVar(value=f"{params['maxTimeouts']}"),
-        'preTrigSamples': tk.StringVar(value=f"{params['preTrigSamples']}"),
-        'postTrigSamples': tk.StringVar(value=f"{params['postTrigSamples']}")
-    }
-
-    for i, ch, color in zip(range(1, 5), channelIDs, ['blue', 'red', 'green3', 'gold']):
+    ch_colors = {'blue': '#007dff', 'red': 'red', 'green': '#66BB6A', 'gold': 'gold'}
+    for i, ch, color in zip(range(1, 5), channelIDs, ch_colors.values()):
         Label(
             summary,
             text=ch,
+            font='bold',
             background=color if params[f'ch{ch}enabled'] else 'gray63',
             foreground='white' if params[f'ch{ch}enabled'] else 'light gray',
             anchor='e'
@@ -652,22 +658,22 @@ def main() -> None:
         )
 
     for i in range(4):
-        Label(summary, textvariable=summary_textvar['range'][i], anchor='e').grid(
+        Label(summary, textvariable=ui_textvar['range'][i], anchor='e').grid(
             column=i + 1, row=1,
             padx=0 if i == 0 else (gui.THIN_PAD, 0), pady=(gui.WIDE_PAD, 0),
             sticky='e'
         )
-        Label(summary, textvariable=summary_textvar['analogOffset'][i], anchor='e').grid(
+        Label(summary, textvariable=ui_textvar['analogOffset'][i], anchor='e').grid(
             column=i + 1, row=2,
             padx=0 if i == 0 else (gui.THIN_PAD, 0), pady=(gui.LINE_PAD, 0),
             sticky='e'
         )
-        Label(summary, textvariable=summary_textvar['coupling'][i], anchor='e').grid(
+        Label(summary, textvariable=ui_textvar['coupling'][i], anchor='e').grid(
             column=i + 1, row=3,
             padx=0 if i == 0 else (gui.THIN_PAD, 0), pady=(gui.LINE_PAD, 0),
             sticky='e'
         )
-        Label(summary, textvariable=summary_textvar['target'][i], anchor='e').grid(
+        Label(summary, textvariable=ui_textvar['target'][i], anchor='e').grid(
             column=i + 1, row=4,
             padx=0 if i == 0 else (gui.THIN_PAD, 0), pady=(gui.LINE_PAD, 0),
             sticky='e'
@@ -678,43 +684,43 @@ def main() -> None:
     Label(summary, text='Timebase').grid(
         column=0, row=6, padx=(gui.THIN_PAD, 0), pady=(gui.WIDE_PAD, 0), sticky='w'
         )
-    Label(summary, textvariable=summary_textvar['timebase'], anchor='e').grid(
+    Label(summary, textvariable=ui_textvar['timebase'], anchor='e').grid(
         column=1, row=6, columnspan=4, padx=0, pady=(gui.WIDE_PAD, 0), sticky='ew'
         )
     Label(summary, text='Threshold').grid(
         column=0, row=7, padx=(gui.THIN_PAD, 0), pady=(gui.LINE_PAD, 0), sticky='w'
         )
-    Label(summary, textvariable=summary_textvar['thresholdmV'], anchor='e').grid(
+    Label(summary, textvariable=ui_textvar['thresholdmV'], anchor='e').grid(
         column=1, row=7, columnspan=4, padx=0, pady=(gui.LINE_PAD, 0), sticky='ew'
         )
     Label(summary, text='Trigger delay').grid(
         column=0, row=8, padx=(gui.THIN_PAD, 0), pady=(gui.LINE_PAD, 0), sticky='w'
         )
-    Label(summary, textvariable=summary_textvar['delaySeconds'], anchor='e').grid(
+    Label(summary, textvariable=ui_textvar['delaySeconds'], anchor='e').grid(
         column=1, row=8, columnspan=4, padx=0, pady=(gui.LINE_PAD, 0), sticky='ew'
         )
     Label(summary, text='Auto-trigger after').grid(
         column=0, row=9, padx=(gui.THIN_PAD, 0), pady=(gui.LINE_PAD, 0), sticky='w'
         )
-    Label(summary, textvariable=summary_textvar['autoTrigms'], anchor='e').grid(
+    Label(summary, textvariable=ui_textvar['autoTrigms'], anchor='e').grid(
         column=1, row=9, columnspan=4, padx=0, pady=(gui.LINE_PAD, 0), sticky='ew'
         )
     Label(summary, text='Max. timeouts').grid(
         column=0, row=10, padx=(gui.THIN_PAD, 0), pady=(gui.LINE_PAD, 0), sticky='w'
         )
-    Label(summary, textvariable=summary_textvar['maxTimeouts'], anchor='e').grid(
+    Label(summary, textvariable=ui_textvar['maxTimeouts'], anchor='e').grid(
         column=1, row=10, columnspan=4, padx=0, pady=(gui.LINE_PAD, 0), sticky='ew'
         )
     Label(summary, text='Pre-trigger samples').grid(
         column=0, row=11, padx=(gui.THIN_PAD, 0), pady=(gui.LINE_PAD, 0), sticky='w'
         )
-    Label(summary, textvariable=summary_textvar['preTrigSamples'], anchor='e').grid(
+    Label(summary, textvariable=ui_textvar['preTrigSamples'], anchor='e').grid(
         column=1, row=11, columnspan=4, padx=0, pady=(gui.LINE_PAD, 0), sticky='ew'
         )
     Label(summary, text='Post-trigger samples').grid(
         column=0, row=12, padx=(gui.THIN_PAD, 0), pady=(gui.LINE_PAD, 0), sticky='w'
         )
-    Label(summary, textvariable=summary_textvar['postTrigSamples'], anchor='e').grid(
+    Label(summary, textvariable=ui_textvar['postTrigSamples'], anchor='e').grid(
         column=1, row=12, columnspan=4, padx=0, pady=(gui.LINE_PAD, 0), sticky='ew'
         )
 
@@ -759,8 +765,8 @@ def main() -> None:
     )
     histBounds.grid(column=4, row=2, pady=(gui.THIN_PAD, 0), sticky='n')
     Label(runTab, text='Bins:', anchor='center').grid(
-        column=5, row=2, padx=0, pady=gui.WIDE_PAD, sticky='n'
-        )
+        column=5, row=2, padx=0, pady=(gui.WIDE_PAD + gui.THIN_PAD, 0), sticky='n'
+    )
     histBinsVar = tk.IntVar(value=params['histBins'])
 
     def validate(entry: str) -> bool:
@@ -772,11 +778,11 @@ def main() -> None:
         from_=50,
         to=200,
         textvariable=histBinsVar,
-        width=5,
+        width=6,
         increment=10,
         validate='key',
         validatecommand=(root.register(validate), '%P')
-        )
+    )
     binsSpbx.grid(column=6, row=2, padx=(gui.MED_PAD, 0), pady=(gui.WIDE_PAD, 0), sticky='nw')
     binsSpbx.bind('<FocusOut>', lambda _: gui.assert_entry_ok(binsSpbx, (50, 200)))
 
@@ -799,16 +805,19 @@ def main() -> None:
     histApplyBtn = Button(
         runTab,
         text='Apply',
-        width=9,
+        width=8,
         command=lambda: histogram.create(histBounds.get(), histBinsVar.get())
         )
     histApplyBtn.grid(
         column=7, row=2,
-        padx=(gui.THIN_PAD, 0), pady=(gui.WIDE_PAD, 0), ipady=gui.THIN_PAD,
+        padx=(gui.THIN_PAD, 0), pady=(gui.WIDE_PAD, 0), ipady=gui.THIN_PAD / 2,
         sticky='ne'
         )
-    histSaveBtn = Button(runTab, text='Save as...', width=9, command=histogram.save)
-    histSaveBtn.grid(column=8, row=2, padx=0, pady=(gui.WIDE_PAD, 0), ipady=gui.THIN_PAD, sticky='ne')
+    histSaveBtn = Button(runTab, text='Save as...', width=8, command=histogram.save)
+    histSaveBtn.grid(
+        column=8, row=2, padx=0, pady=(gui.WIDE_PAD, 0), ipady=gui.THIN_PAD / 2,
+        sticky='ne'
+        )
 
     """ Start/Stop job buttons """
     startButton = Button(

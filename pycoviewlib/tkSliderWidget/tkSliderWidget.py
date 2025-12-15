@@ -9,10 +9,13 @@ class Bar(TypedDict):
     Value: float
 
 class Slider(Frame):
-    LINE_COLOR = "#476b6b"
+    # LINE_COLOR = "#476b6b"
+    LINE_COLOR = "#0064CC"
     LINE_WIDTH = 3
-    BAR_COLOR_INNER = "#5c8a8a"
-    BAR_COLOR_OUTTER = "#c2d6d6"
+    # BAR_COLOR_INNER = "#5c8a8a"
+    BAR_COLOR_INNER = "#007dff"
+    # BAR_COLOR_OUTTER = "#c2d6d6"
+    BAR_COLOR_OUTTER = "#B3D9FF"
     BAR_RADIUS = 10
     BAR_RADIUS_INNER = BAR_RADIUS - 5
     # 9iovaferra: labels only use int values in GUI
