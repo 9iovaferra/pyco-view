@@ -1,0 +1,42 @@
+# Folders
+/Data
+**/__pycache__
+/build
+
+# Misc
+PycoView
+pycoview.desktop
+config.ini
+*.vim
+
+# Compiled source
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+
+# Packages
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# OS generated files
+.*.py.swp
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+**/*.obj
+**/*.lib
+**/*.exp
+**/*.h
