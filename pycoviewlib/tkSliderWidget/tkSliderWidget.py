@@ -1,5 +1,6 @@
-from tkinter import *
-from tkinter.ttk import *
+# from tkinter import *
+import tkinter as tk
+# from tkinter.ttk import *
 
 from typing import TypedDict, List, Callable, Optional, Union
 
@@ -8,7 +9,7 @@ class Bar(TypedDict):
     Pos: float
     Value: float
 
-class Slider(Frame):
+class Slider(tk.Frame):
     # LINE_COLOR = "#476b6b"
     LINE_COLOR = "#0064CC"
     LINE_WIDTH = 3
@@ -44,7 +45,7 @@ class Slider(Frame):
         assert step_size <= max_val - min_val, "step size must be smaller than range"
         assert min_val < max_val, "min value must be smaller than max value"
 
-        Frame.__init__(self, master, height=height, width=width)
+        tk.Frame.__init__(self, master, height=height, width=width)
         self.master = master
         if init_lis is None:
             init_lis = [min_val]
@@ -72,10 +73,16 @@ class Slider(Frame):
         for value in self.init_lis:
             pos = (value - min_val) / (max_val - min_val)
             ids = []
-            bar: Bar = {"Pos": pos, "Ids": ids, "Value": value}
+            variable = tk.DoubleVar(value=value)
+            bar: Bar = {
+                "Pos": pos,
+                "Ids": ids,
+                "Value": value,
+                'tkVar': variable  # added tk variable to link with ui
+            }
             self.bars.append(bar)
 
-        self.canv = Canvas(self, height=self.canv_H, width=self.canv_W)
+        self.canv = tk.Canvas(self, height=self.canv_H, width=self.canv_W)
         self.canv.pack()
         self.canv.bind("<Motion>", self._mouseMotion)
         self.canv.bind("<B1-Motion>", self._moveBar)
@@ -203,6 +210,8 @@ class Slider(Frame):
         # would sometimes cause disparity between value on label and actual returned
         # value from bar position [e.g. -45(label) -> -44(value)]
         self.bars[idx]["Value"] = round(pos * (self.max_val - self.min_val) + self.min_val, 0)
+        # added tk variable to link with ui
+        self.bars[idx]['tkVar'].set(self.bars[idx]['Value'])
         self._val_change_callback(self.get())
 
     def __calcPos(self, x):

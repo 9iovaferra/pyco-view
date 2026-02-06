@@ -232,7 +232,12 @@ class Histogram():
         self.stop_event.set()
         self.queue = Queue(maxsize=100)
 
-    def create(self, bounds: tuple[int, int] = None, bins: int = None) -> None:
+    def create(
+            self,
+            bounds: tuple[int, int] = None,
+            bins: int = None,
+            widget_hook: tk.Widget = None
+            ) -> None:
         """
         Generates or updates the histogram, if new bounds and/or bins values
         are provided. Ticks are adjusted to ensure readability.
@@ -274,6 +279,9 @@ class Histogram():
         if bins is not None and bins != self.bins:
             self.bins = bins
             update_setting(['histBins'], [bins], root=self.root)
+
+        if widget_hook is not None:
+            widget_hook.state(['disabled'])
 
         self.canvas.draw()
 
@@ -835,7 +843,9 @@ def main() -> None:
         runTab,
         text='Apply',
         width=8,
-        command=lambda: histogram.create(histBounds.get(), histBinsVar.get())
+        command=lambda: histogram.create(
+            histBounds.get(), histBinsVar.get(), widget_hook=histApplyBtn
+        )
     )
     histApplyBtn.state(['disabled'])
     histApplyBtn.grid(
@@ -848,13 +858,11 @@ def main() -> None:
         column=8, row=2, padx=0, pady=(gui.WIDE_PAD, 0), ipady=gui.THIN_PAD / 2,
         sticky='ne'
     )
-    histBinsVar.trace_add(  # Enable Apply button if bins variable is changed
-        'write', lambda var, index, mode: toggle_widget_state(histApplyBtn)
-    )
-    # histBounds.canv.bind(   # Enable Apply button if 'bounds' nodes are moved
-    #     '<B1-Motion>',
-    #     lambda _: toggle_widget_state(histApplyBtn)
-    # )
+    # Enable Apply button if bins variable is changed
+    for variable in [histBinsVar, histBounds.bars[0]['tkVar'], histBounds.bars[1]['tkVar']]:
+        variable.trace_add(
+            'write', lambda var, index, mode: toggle_widget_state(histApplyBtn)
+        )
 
     """ Start/Stop job buttons """
     startButton = Button(
