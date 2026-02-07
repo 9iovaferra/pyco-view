@@ -32,7 +32,7 @@ from typing import Union, Optional
 from webbrowser import open_new
 
 
-class RootWindow(tk.Tk):
+class App(tk.Tk):
     def __init__(self, *args, **kwargs):
         tk.Tk.__init__(self, *args, **kwargs)
         self.resizable(0, 0)
@@ -140,11 +140,12 @@ class RootWindow(tk.Tk):
 
 
 class ChannelSettings():
-    def __init__(self, parent: Notebook, name: str, col: int, row: int):
+    def __init__(self, parent: Notebook, name: str, col: int, row: int, target: Checkbutton = None):
         self.frame = gui.PVLabelframe(
             parent=parent, title=f'Channel {name}', size=(1, 9),
             col=col, row=row, padding=gui.lbf_asym_padding
         )
+        self.target = target
         self.max_offset = chInputRanges[params[f'ch{name}range']]
 
         self.enabled_w = self.frame.add_checkbutton(
@@ -202,7 +203,7 @@ class ChannelSettings():
         )
     
     def toggle_channel_state(self, enabled: int) -> None:
-        for w in list(self.frame.children.values())[1:]:
+        for w in list(self.frame.children.values())[1:] + [self.target]:
             toggle_widget_state(w[0], 'disabled' if not enabled else '!disabled')
 
 
@@ -314,10 +315,6 @@ class Histogram():
         if not all([e is None for e in err]):
             PV_STATUS.set(f'(!) {", ".join([e for e in err if e is not None])}')
             return
-        # timestamp: str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-        # if params['log']:  # Creating loghandle if required
-        #   self.loghandle: str = f'{self.mode}_log_{timestamp}.txt'
-        # self.datahandle: str = f"{PV_DIR}/Data/{self.mode}_data_{timestamp}.{params['dformat']}"
         self.stop_event.clear()
         self.follower.start()
         self.root.protocol('WM_DELETE_WINDOW', self.kill)
@@ -328,12 +325,6 @@ class Histogram():
         All tkinter commands must run in mainloop, so data is queued
         to `place_on_canvas()` which is outside of follower thread.
         """
-        # """ Logging runtime parameters """
-        # if params['log']:
-        #   log(self.loghandle, '==> Running acquisition with parameters:', time=True)
-        #   col_width = max([len(k) for k in self.params.keys()])
-        #   for key, value in self.params.items():
-        #       log(self.loghandle, f'{key: <{col_width}} {value:}')
         count = 1
         self.timeout = max_timeouts
 
@@ -494,7 +485,7 @@ def probe_pico(root: tk.Tk, mode: str, max_timeouts: int) -> None:
         save_as_button.grid(row=1, column=0, padx=(0, gui.THIN_PAD), sticky='nse')
         close_button.grid(row=1, column=1, padx=(0, gui.WIDE_PAD), sticky='nse')
 
-    def saveas(fig) -> None:
+    def saveas(fig: plt.Figure) -> None:
         figureSavePath = asksaveasfilename(
             initialdir=f'{PV_DIR}/Data',
             filetypes=[('PNG', '*.png'), ('PDF', '*.pdf')]
@@ -556,6 +547,7 @@ def update_setting(
             ui_textvar[f'ch{id}range'].set(f"±{chInputRanges[params[f'ch{id}range']]}")
             ui_textvar[f'ch{id}analogOffset'].set(int(params[f'ch{id}analogOffset'] * 1000))
             ui_textvar[f'ch{id}coupling'].set(key_from_value(couplings, params[f'ch{id}coupling']))
+            ui_textvar[f'ch{id}bandwidth'].set(key_from_value(bandwidths, params[f'ch{id}bandwidth']))
             ui_textvar[f'ch{id}target'].set(u'\u25cF' if id in params['target'] else u'\u25cB')
             ui_textvar[f'ch{id}enabled']['bg'].set(color if params[f'ch{id}enabled'] else 'gray63'),
             ui_textvar[f'ch{id}enabled']['fg'].set('white' if params[f'ch{id}enabled'] else 'light gray')
@@ -592,7 +584,7 @@ def toggle_widget_state(widget: Widget, state: str = 'normal') -> None:
 
 def main() -> None:
     """ Main window """
-    root: tk.Tk = RootWindow()
+    root: tk.Tk = App()
     root.tk.call('source', 'pycoviewlib/ttkAzure/azure.tcl')
     root.tk.call('set_theme', 'light')
     global PV_STATUS  # App status shown in the bottom left
@@ -603,18 +595,7 @@ def main() -> None:
     params = parse_config()
     backup_config()
 
-    # TODO: filters instead of ifs?
-    param_offsets: list[float] = []
-    param_ranges: list[int] = []
-    param_couplings: list[str] = []
-    for k, v in params.items():
-        if 'Offset' in k:
-            param_offsets.append(v)
-        elif 'range' in k:
-            param_ranges.append(chInputRanges[v])
-        elif 'coupling' in k:
-            param_couplings.append(key_from_value(couplings, v))
-
+    # TODO: Allow user to choose `Data` folder path
     try:
         pv_data_folder: Path = Path(f'{PV_DIR}/Data').expanduser()
         pv_data_folder.mkdir(exist_ok=True)
@@ -641,6 +622,7 @@ def main() -> None:
         ui_textvar[f'ch{id}range'] = tk.StringVar(value=f"±{chInputRanges[params[f'ch{id}range']]}")
         ui_textvar[f'ch{id}analogOffset'] = tk.IntVar(value=int(params[f'ch{id}analogOffset'] * 1000))
         ui_textvar[f'ch{id}coupling'] = tk.StringVar(value=key_from_value(couplings, params[f'ch{id}coupling']))
+        ui_textvar[f'ch{id}bandwidth'] = tk.StringVar(value=key_from_value(bandwidths, params[f'ch{id}bandwidth']))
         ui_textvar[f'ch{id}target'] = tk.StringVar(value=u'\u25cF' if id in params['target'] else u'\u25cB')
         ui_textvar[f'ch{id}enabled'] = {
             'bg': tk.StringVar(value=color if params[f'ch{id}enabled'] else 'gray63'),
@@ -657,14 +639,14 @@ def main() -> None:
         'postTrigSamples': tk.StringVar(value=f"{params['postTrigSamples']}"),
     })
 
-    """ Top frame - contains Mode selector and Filename textbox """
+    """ Top frame - contains `Mode` selector and `Filename` textbox """
     topFrame = Frame(root, padding=(gui.THIN_PAD, 0, gui.THIN_PAD, gui.THIN_PAD))
     topFrame.grid(column=0, row=0, padx=gui.WIDE_PAD, pady=(gui.WIDE_PAD, 0), sticky='new')
     topFrame.columnconfigure(2, weight=3)
 
     # Mode selector was moved *after* histogram creation because it needs Histogram instance
-    getInfo = Button(topFrame, text='Get Info', width=8, state=tk.DISABLED, command=lambda: get_pico_info(root=root))
-    getInfo.grid(column=2, row=0, padx=(gui.MED_PAD, 0), sticky='w')
+    # getInfo = Button(topFrame, text='Get Info', width=8, state=tk.DISABLED, command=lambda: get_pico_info(root=root))
+    # getInfo.grid(column=2, row=0, padx=(gui.MED_PAD, 0), sticky='w')
 
     Label(topFrame, text='Filename:', anchor='e').grid(
         column=2, row=0, padx=(0, gui.WIDE_PAD), pady=gui.WIDE_PAD, sticky='ne'
@@ -680,7 +662,7 @@ def main() -> None:
     filename.grid(column=3, row=0, pady=gui.THIN_PAD, sticky='ne')
     filename.bind('<FocusOut>', lambda _: update_setting(['filename'], [settings['filename'].get()]))
 
-    """ Tabs """
+    """ `Run` and `Settings` tabs """
     tabsFrame = Frame(root, padding=(gui.THIN_PAD, 0, gui.THIN_PAD, gui.THIN_PAD))
     tabsFrame.grid(column=0, row=1, **gui.uniform_padding, sticky='nesw')
     tabControl = Notebook(tabsFrame)
@@ -692,7 +674,7 @@ def main() -> None:
     tabControl.add(settingsTab, text='Settings')
     tabControl.pack(expand=1, fill='both')
 
-    """ Run tab """
+    """ `Run` tab """
     summary = Labelframe(runTab, text='Summary')
     summary.grid(column=0, row=0, columnspan=3, **gui.lbf_asym_padding, sticky='nesw')
 
@@ -712,47 +694,47 @@ def main() -> None:
             sticky='we'
         )
 
-    for i, entry in enumerate(['Range (mV)', 'Offset (mV)', 'Coupling', 'Trigger target']):
+    for i, entry in enumerate(
+        ['Range (mV)', 'Offset (mV)', 'Coupling', 'Bandwidth', 'Trigger target'],
+        start=1
+    ):
         Label(summary, text=entry).grid(
-            column=0, row=i + 1, padx=(gui.THIN_PAD, 0),
-            pady=(gui.WIDE_PAD if i == 0 else gui.LINE_PAD, 0), sticky='w'
+            column=0, row=i, padx=(gui.THIN_PAD, 0),
+            pady=(gui.WIDE_PAD if i == 1 else gui.LINE_PAD, 0), sticky='w'
         )
 
-    for i, id in enumerate(channelIDs):
+    for i, id in enumerate(channelIDs, start=1):
+        padx = 0 if i == 1 else (gui.THIN_PAD, 0)
         Label(summary, textvariable=ui_textvar[f'ch{id}range'], anchor='e').grid(
-            column=i + 1, row=1,
-            padx=0 if i == 0 else (gui.THIN_PAD, 0), pady=(gui.WIDE_PAD, 0),
-            sticky='e'
+            column=i, row=1, padx=padx, pady=(gui.WIDE_PAD, 0), sticky='e'
         )
         Label(summary, textvariable=ui_textvar[f'ch{id}analogOffset'], anchor='e').grid(
-            column=i + 1, row=2,
-            padx=0 if i == 0 else (gui.THIN_PAD, 0), pady=(gui.LINE_PAD, 0),
-            sticky='e'
+            column=i, row=2, padx=padx, pady=(gui.LINE_PAD, 0), sticky='e'
         )
         Label(summary, textvariable=ui_textvar[f'ch{id}coupling'], anchor='e').grid(
-            column=i + 1, row=3,
-            padx=0 if i == 0 else (gui.THIN_PAD, 0), pady=(gui.LINE_PAD, 0),
-            sticky='e'
+            column=i, row=3, padx=padx, pady=(gui.LINE_PAD, 0), sticky='e'
+        )
+        Label(summary, textvariable=ui_textvar[f'ch{id}bandwidth'], anchor='e').grid(
+            column=i, row=4, padx=padx, pady=(gui.LINE_PAD, 0), sticky='e'
         )
         Label(summary, textvariable=ui_textvar[f'ch{id}target'], anchor='e').grid(
-            column=i + 1, row=4,
-            padx=0 if i == 0 else (gui.THIN_PAD, 0), pady=(gui.LINE_PAD, 0),
-            sticky='e'
+            column=i, row=5, padx=padx, pady=(gui.LINE_PAD, 0), sticky='e'
         )
+    del padx
 
-    gui.HSeparator(summary, row=5, columnspan=5)
+    gui.HSeparator(summary, row=6, columnspan=5)
 
-    Label(summary, text='Timebase').grid(
-        column=0, row=6, padx=(gui.THIN_PAD, 0), pady=(gui.WIDE_PAD, 0), sticky='w'
-    )
-    Label(summary, textvariable=ui_textvar['timebase'], anchor='e').grid(
-        column=1, row=6, columnspan=4, padx=0, pady=(gui.WIDE_PAD, 0), sticky='ew'
-    )
+    # Label(summary, text='Timebase').grid(
+    #     column=0, row=6, padx=(gui.THIN_PAD, 0), pady=(gui.WIDE_PAD, 0), sticky='w'
+    # )
+    # Label(summary, textvariable=ui_textvar['timebase'], anchor='e').grid(
+    #     column=1, row=6, columnspan=4, padx=0, pady=(gui.WIDE_PAD, 0), sticky='ew'
+    # )
     Label(summary, text='Threshold').grid(
-        column=0, row=7, padx=(gui.THIN_PAD, 0), pady=(gui.LINE_PAD, 0), sticky='w'
+        column=0, row=7, padx=(gui.THIN_PAD, 0), pady=(gui.WIDE_PAD, 0), sticky='w'
     )
     Label(summary, textvariable=ui_textvar['thresholdmV'], anchor='e').grid(
-        column=1, row=7, columnspan=4, padx=0, pady=(gui.LINE_PAD, 0), sticky='ew'
+        column=1, row=7, columnspan=4, padx=0, pady=(gui.WIDE_PAD, 0), sticky='ew'
     )
     Label(summary, text='Trigger delay').grid(
         column=0, row=8, padx=(gui.THIN_PAD, 0), pady=(gui.LINE_PAD, 0), sticky='w'
@@ -931,11 +913,11 @@ def main() -> None:
         'padx': 0, 'pady': gui.WIDE_PAD, 'ipadx': gui.THIN_PAD, 'ipady': gui.THIN_PAD
     }
     triggerSettings = gui.PVLabelframe(
-        centered_frame, title='Trigger', col=0, row=0, size=(2, 14), rspan=2,
+        centered_frame, title='Trigger', col=0, row=0, size=(1, 16), rspan=2,
         padding=lbf_padding_v, sticky='nsw'
     )
-    targetFlags = [tk.StringVar(value='') for _ in range(4)]
 
+    targetFlags = [tk.StringVar(value='') for _ in range(4)]
     for i, name in enumerate(channelIDs):
         triggerSettings.add_checkbutton(
             id=f'ch{name}enabled',
@@ -967,14 +949,14 @@ def main() -> None:
     )
     settings['postTrigSamples'] = triggerSettings.variables['postTrigSamples']
 
-    triggerSettings.add_spinbox(
-        id='timebase',
-        from_to=(0, 2 ** 32 - 1),
-        step=1,
-        prompt='Timebase',
-        default=params['timebase']
-    )
-    settings['timebase'] = triggerSettings.variables['timebase']
+    # triggerSettings.add_spinbox(
+    #     id='timebase',
+    #     from_to=(0, 2 ** 32 - 1),
+    #     step=1,
+    #     prompt='Timebase',
+    #     default=params['timebase']
+    # )
+    # settings['timebase'] = triggerSettings.variables['timebase']
 
     triggerSettings.add_spinbox(
         id='thresholdmV',
@@ -1021,17 +1003,20 @@ def main() -> None:
     triggerSettings.arrange()
 
     """ Channels settings """
-    chASettings = ChannelSettings(centered_frame, name='A', col=1, row=0)
-    chBSettings = ChannelSettings(centered_frame, name='B', col=2, row=0)
-    chCSettings = ChannelSettings(centered_frame, name='C', col=3, row=0)
-    chDSettings = ChannelSettings(centered_frame, name='D', col=4, row=0)
-
-    for id, chSettings in zip(channelIDs, [chASettings, chBSettings, chCSettings, chDSettings]):
-        settings[f'ch{id}enabled'] = chSettings.frame.variables[f'ch{id}enabled']
-        settings[f'ch{id}range'] = chSettings.frame.variables[f'ch{id}range']
-        settings[f'ch{id}coupling'] = chSettings.frame.variables[f'ch{id}coupling']
-        settings[f'ch{id}analogOffset'] = chSettings.frame.variables[f'ch{id}analogOffset']
-        settings[f'ch{id}bandwidth'] = chSettings.frame.variables[f'ch{id}bandwidth']
+    chSettings = dict.fromkeys(channelIDs)
+    for i, id in enumerate(channelIDs, start=1):
+        chSettings[id] = ChannelSettings(
+            centered_frame,
+            name=id,
+            col=i,
+            row=0,
+            target=triggerSettings.children[f'ch{id}enabled']
+        )
+        settings[f'ch{id}enabled'] = chSettings[id].frame.variables[f'ch{id}enabled']
+        settings[f'ch{id}range'] = chSettings[id].frame.variables[f'ch{id}range']
+        settings[f'ch{id}coupling'] = chSettings[id].frame.variables[f'ch{id}coupling']
+        settings[f'ch{id}analogOffset'] = chSettings[id].frame.variables[f'ch{id}analogOffset']
+        settings[f'ch{id}bandwidth'] = chSettings[id].frame.variables[f'ch{id}bandwidth']
 
         # Enable/disable channel settings and target channel(s) checkboxes in triggerSettings
         # chSettings.enabled_w.configure(
@@ -1101,7 +1086,7 @@ def main() -> None:
         sticky='se'
         )
 
-    for variable in settings.values():  # Enable Apply button if any variable is changed
+    for variable in settings.values():  # Enable Apply button if any setting is changed
         variable.trace_add(
             'write', lambda var, index, mode: toggle_widget_state(applySettingsBtn)
         )

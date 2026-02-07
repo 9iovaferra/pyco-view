@@ -83,6 +83,8 @@ class PVLabelframe(Labelframe):
             rspan: Optional[int] = None,
             padding: Optional[dict[str, int]] = None
             ):
+        assert isinstance(sticky, str) and all([c in 'nesw' for c in sticky]), \
+                f"Invalid 'sticky' parameter: expected 'nesw' (str), got {sticky}."
         self.parent = parent
         self.grandparent = parent.winfo_toplevel()  # Get root window
         self.children: dict[str, tuple[Widget, dict[str, int]]] = {}
@@ -92,19 +94,11 @@ class PVLabelframe(Labelframe):
         self.maxcol = size[0]
         self.maxrow = size[1]
         self.variables: dict[str, tkAnyVar] = {}  # Container for tk variables
-        # if not all([c in 'nesw' for c in sticky]) or not isinstance(sticky, str):
-        #   raise Exception('Invalid parameter value')
         grid_kwargs = {'column': col, 'row': row, 'sticky': sticky}
         if cspan is not None:
             grid_kwargs['columnspan'] = cspan
-        #   _ = [self.parent.grid_columnconfigure(c + col, weight=1) for c in range(cspan)]
-        # else:
-        #   self.parent.grid_columnconfigure(col, weight=1)
         if rspan is not None:
             grid_kwargs['rowspan'] = rspan
-        #   _ = [self.parent.grid_rowconfigure(r + row, weight=1) for r in range(rspan)]
-        # else:
-        #   self.parent.grid_rowconfigure(row, weight=1)
         grid_kwargs.update(padding if padding is not None else lbf_asym_padding)
         self.labelframe.grid(**grid_kwargs)
 
