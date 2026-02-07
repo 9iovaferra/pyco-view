@@ -6,7 +6,6 @@ from pycoviewlib.functions import _isfloat
 from typing import Union, Any, Optional, Callable
 
 """ Padding presets (frame padding: 'left top right bottom') """
-CH_COLORS = {'blue': '#007dff', 'red': 'red', 'green': '#66BB6A', 'gold': 'gold'}
 THIN_PAD = 6
 LINE_PAD = int(THIN_PAD / 3)
 MED_PAD = int((THIN_PAD * 4) / 3)
@@ -29,7 +28,17 @@ lbf_asym_padding_no_top = {
 lbf_contents_padding = {'padx': (THIN_PAD, 0), 'pady': (MED_PAD, 2)}
 
 """ Colors """
+CH_COLORS = {'blue': '#007dff', 'red': 'red', 'green': '#66BB6A', 'gold': 'gold'}
 HIST_COLOR = 'tab:blue'
+
+# ------------------------- Entry validation helpers -------------------------
+def validate_filename(entry: str) -> bool:
+    valid: bool = entry == '' or not any(char in entry for char in r'<>:"/\|?*. ')
+    return valid
+
+def validate_bins(entry: str) -> bool:
+    valid: bool = entry == '' or entry.isdigit()
+    return valid
 
 # -------------------------- Custom Tkinter wrapper --------------------------
 # TODO: make id checker function for consistency
@@ -107,7 +116,8 @@ class PVLabelframe(Labelframe):
             sticky: str = None,
             **kwargs
             ) -> None:
-        # print(f'{self.auto_pos_x=}\t{self.auto_pos_y=}')
+        assert self.auto_pos_x <= self.maxcol, \
+            'Too many widgets for specified size.'
         grid_kwargs = {
             'column': self.auto_pos_x,
             'row': self.auto_pos_y,
@@ -116,20 +126,15 @@ class PVLabelframe(Labelframe):
             'pady': (0, 0)
         }
         grid_kwargs.update(padding if padding is not None else lbf_contents_padding)
-        # if padding is None and self.auto_pos_y > 0:  # Larger space between elements
-        #   grid_kwargs['pady'] = (WIDE_PAD, 0)
         grid_kwargs.update(kwargs)
         if self.auto_pos_x > 0:  # Spacing between columns
             grid_kwargs['padx'] = (  # Checkbuttons have wider left padding by default
-                WIDE_PAD * 5 / 3 - 1 if widget.winfo_class() == 'Checkbutton' else 2 * WIDE_PAD,
+                WIDE_PAD * 5/3-1 if widget.winfo_class() == 'Checkbutton' else 2 * WIDE_PAD,
                 grid_kwargs['padx'][1]
             )
-        # print(f'{grid_kwargs=}')
         if self.auto_pos_y == self.maxrow - 1:
             self.auto_pos_x += 1
             self.auto_pos_y = 0
-        elif self.auto_pos_x > self.maxcol - 1:
-            raise Exception('Too many widgets for specified size.')
         else:
             self.auto_pos_y += 1
 
@@ -137,18 +142,16 @@ class PVLabelframe(Labelframe):
 
     def __create_tk_var(self, options: list[Any], default: Any | None) -> tkAnyVar:
         inferred_type = type(options[0])
-        if default is not None and inferred_type is not type(default):
-            raise TypeError(
-                f'Options and default value types don\'t match ({inferred_type!s} vs {type(default)!s})'
-            )
+        assert default is not None and inferred_type is type(default), \
+            f"Options and default value types don't match ({inferred_type!s} vs {type(default)!s})"
+        assert any([inferred_type is str, inferred_type is int, inferred_type is float]), \
+            f'Invalid variable type ({inferred_type})'
         if inferred_type is str:
             return StringVar(self.labelframe, value=options[0] if default is None else default)
         elif inferred_type is int:
             return IntVar(self.labelframe, value=options[0] if default is None else default)
         elif inferred_type is float:
             return DoubleVar(self.labelframe, value=options[0] if default is None else default)
-        else:
-            raise TypeError(f'Invalid variable type ({inferred_type})')
 
     def __validate(self, entry: str) -> bool:
         valid: bool = entry == '' or entry == '-' or entry.isdigit() or _isfloat(entry)
@@ -159,7 +162,6 @@ class PVLabelframe(Labelframe):
 
     def arrange(self) -> None:
         for widget, grid_kwargs in self.children.values():
-            # print(f'{widget=},\n\t{grid_kwargs=}')
             widget.grid(**grid_kwargs)
 
     def get_value(self, id: str) -> Any:
@@ -193,8 +195,8 @@ class PVLabelframe(Labelframe):
             padding: dict[str, int] = None,
             sticky: str = None
             ) -> Spinbox:
-        if id in self.variables:
-            raise Exception(f"The widget ID '{id}' already exists!")
+        assert id not in self.variables, \
+            f"The widget ID '{id}' already exists!"
         self.variables[id] = self.__create_tk_var(from_to, default)
         if prompt is not None:
             self.add_label(
@@ -234,8 +236,8 @@ class PVLabelframe(Labelframe):
             padding: dict[str, int] = None,
             sticky: str = None
             ) -> Checkbutton:
-        if id in self.variables:
-            raise Exception(f'The widget ID \'{id}\' already exists!')
+        assert id not in self.variables, \
+            f"The widget ID '{id}' already exists!"
         self.variables[id] = self.__create_tk_var(on_off, default)
         checkbutton = Checkbutton(
             self.labelframe,
@@ -268,8 +270,8 @@ class PVLabelframe(Labelframe):
             padding: dict[str, int] = None,
             sticky: str = None
             ) -> OptionMenu:
-        if id in self.variables:
-            raise Exception(f'The widget ID \'{id}\' already exists!')
+        assert id not in self.variables, \
+            f"The widget ID '{id}' already exists!"
         self.variables[id] = self.__create_tk_var(options, default)
         if prompt is not None:
             self.add_label(
@@ -306,8 +308,8 @@ class PVLabelframe(Labelframe):
             padding: dict[str, int] = None,
             sticky: str = None
             ) -> Combobox:
-        if id in self.variables:
-            raise Exception(f'The widget ID \'{id}\' already exists!')
+        assert id not in self.variables, \
+            f"The widget ID '{id}' already exists!"
         self.variables[id] = self.__create_tk_var(options, default)
         if prompt is not None:
             self.add_label(
@@ -343,14 +345,13 @@ class PVLabelframe(Labelframe):
             padding: dict[str, int] = lbf_contents_padding,
             sticky: str = None
             ) -> None:
-        if not all([id in self.variables for id in members]):
-            raise Exception('One or more members don\'t exist!')
-        # print(f'{members=}')
+        assert all([id in self.variables for id in members]), \
+            "One or more members don't exist!"
         n_members = len(members)
-        if n_members == 1:
-            raise Exception('Can\'t make a group with just one member.')
-        if cspan is not None and cspan > n_members:
-            raise Exception(f'Column span {cspan} is greater than number of members {n_members}!')
+        assert n_members > 1, \
+            "Can't make a group with just one member."
+        assert cspan is not None and cspan < n_members, \
+            f'Column span {cspan}, >=0 and <={n_members} expected.'
 
         if name is not None:
             group_name_id = f'{id}.label'
@@ -365,7 +366,6 @@ class PVLabelframe(Labelframe):
             # Find first member's row and swap it with the title
             first_member_row = min([self.children[m][1]['row'] for m in members][1:])
             first_member_col = min([self.children[m][1]['column'] for m in members][1:])
-            # print(f'{first_member_row=}, {first_member_col=}')
             self.children[group_name_id][1]['row'] = first_member_row
             self.children[group_name_id][1]['column'] = first_member_col
             if first_member_row > 0:
@@ -374,10 +374,8 @@ class PVLabelframe(Labelframe):
                 self.children[group_name_id][1]['padx'] = (THIN_PAD, 0)
 
         columnspan = (self.auto_pos_y + 1 + n_members) // self.maxrow + 1 if cspan is None else cspan
-        # print(f'{columnspan=}')
         if columnspan > 1:  # Set columnspan for all widgets in the same column as the group
             self.maxcol += 1
-            # self.auto_pos_x += columnspan - 1
             self.auto_pos_y -= 1
             # Iterate over all widgets that are NOT group members
             for c in set(self.children).symmetric_difference(members[1:]):
@@ -393,7 +391,6 @@ class PVLabelframe(Labelframe):
         new_col = False
         for m in members[1:]:  # Treating group as a frame on its own
             self.children[m][1]['row'] += 1
-            # print(f'{(self.maxrow, n_members // columnspan + 1)=}')
             if not new_col and (columnspan > 1 and self.children[m][1]['row'] in (self.maxrow, n_members // columnspan + 1)):
                 new_col = True
             if new_col:
@@ -401,4 +398,3 @@ class PVLabelframe(Labelframe):
                 self.children[m][1]['row'] -= 2
             if layout == 'compact':
                 self.children[m][1]['pady'] = 0
-            # print(f"{m=}\t{self.children[m][1]['column']=}\t{self.children[m][1]['row']=}")
