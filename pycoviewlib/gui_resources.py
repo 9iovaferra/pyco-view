@@ -4,6 +4,7 @@ from tkinter.ttk import (
 )
 from pycoviewlib.functions import _isfloat
 from typing import Union, Any, Optional, Callable
+from re import search, findall
 
 """ Padding presets (frame padding: 'left top right bottom') """
 THIN_PAD = 6
@@ -14,7 +15,7 @@ uniform_padding = {
     'padx': WIDE_PAD, 'pady': WIDE_PAD, 'ipadx': THIN_PAD, 'ipady': THIN_PAD
 }
 hist_padding = {
-    'padx': (WIDE_PAD, 0), 'pady': (WIDE_PAD, 0), 'ipadx': 0, 'ipady': 0
+    'padx': 0, 'pady': (WIDE_PAD, 0), 'ipadx': 0, 'ipady': 0
 }
 lbf_padding = {
     'padx': WIDE_PAD, 'pady': WIDE_PAD, 'ipadx': THIN_PAD, 'ipady': THIN_PAD
@@ -40,6 +41,15 @@ def validate_bins(entry: str) -> bool:
     valid: bool = entry == '' or entry.isdigit()
     return valid
 
+def validate_master_delay(entry: str) -> bool:
+    valid: bool = any([
+        entry == '',
+        # len(findall('-', entry)) == 1,
+        entry == '-',
+        search(r'^-?\d{1,3}$', entry) is not None
+    ]) and search('[a-zA-Z]', entry) is None
+    return valid
+
 # -------------------------- Custom Tkinter wrapper --------------------------
 # TODO: make id checker function for consistency
 def assert_entry_ok(widget, valid_range: tuple[int, int]) -> None:
@@ -63,7 +73,7 @@ def HSeparator(parent, row: int, columnspan: int) -> None:
         column=0,
         row=row,
         columnspan=columnspan,
-        padx=WIDE_PAD,
+        padx=(WIDE_PAD, 0),
         pady=(WIDE_PAD, 0),
         sticky='ew'
     )
@@ -227,6 +237,7 @@ class PVLabelframe(Labelframe):
             on_off: tuple[Any],
             default: Any = None,
             command: Callable = None,
+            style: str = 'TCheckbutton',
             padding: dict[str, int] = None,
             sticky: str = None
             ) -> Checkbutton:
@@ -239,6 +250,7 @@ class PVLabelframe(Labelframe):
             text=prompt,
             onvalue=on_off[0],
             offvalue=on_off[1],
+            style=style,
             takefocus=0
         )
         if command is not None:

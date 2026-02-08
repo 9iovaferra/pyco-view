@@ -153,6 +153,7 @@ class ChannelSettings():
             prompt='Enabled',
             on_off=(1, 0),
             default=params[f'ch{name}enabled'],
+            style='Switch.TCheckbutton',
             padding={
                 'padx': gui.lbf_contents_padding['padx'],
                 'pady': (gui.THIN_PAD, 0)
@@ -211,8 +212,9 @@ class Histogram():
     def __init__(
             self,
             parent: Labelframe,
-            xlim: list[int],
             bins: int,
+            mdelay: int,
+            xlim: list[int],
             ylim: list[int] = None,
             mode: Optional[str] = '',
             ):
@@ -221,8 +223,9 @@ class Histogram():
         self.mode = mode
         self.buffer = []
         self.follower = None
-        self.fig, self.ax = plt.subplots(figsize=(6, 4.2), layout='tight')
+        self.fig, self.ax = plt.subplots(figsize=(6, 4.3), layout='tight')
         self.bins = bins
+        self.mdelay = mdelay
         self.xlim = xlim
         self.ylim = ylim if ylim is not None else [0, 15]
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.parent)
@@ -237,7 +240,8 @@ class Histogram():
             self,
             bounds: tuple[int, int] = None,
             bins: int = None,
-            widget_hook: tk.Widget = None
+            mdelay: int = None,
+            widget_hook: Widget = None
             ) -> None:
         """
         Generates or updates the histogram, if new bounds and/or bins values
@@ -279,6 +283,10 @@ class Histogram():
         if bins is not None and bins != self.bins:
             self.bins = bins
             update_setting(['histBins'], [bins])
+
+        if mdelay is not None and mdelay != self.mdelay:
+            self.mdelay = mdelay
+            update_setting(['masterDelay'], [mdelay])
 
         if widget_hook is not None:
             widget_hook.state(['disabled'])
@@ -567,7 +575,7 @@ def update_setting(
 def on_mode_change(
         mode: str,
         hist: Optional[Histogram] = None,
-        hook_widgets: Optional[list[Widget]] = None
+        hook_widgets: Optional[list[tuple[Widget, str | tuple[str]]]] = None
         ) -> None:
     update_setting(['mode'], [mode])
     if hist is not None:
@@ -575,7 +583,7 @@ def on_mode_change(
         hist.create()
     if hook_widgets is not None:
         for widget in hook_widgets:
-            toggle_widget_state(widget, state='disabled' if mode != 'adc' else 'normal')
+            toggle_widget_state(widget[0], state='disabled' if mode not in widget[1] else 'normal')
 
 
 def toggle_widget_state(widget: Widget, state: str = 'normal') -> None:
@@ -644,7 +652,16 @@ def main() -> None:
     topFrame.grid(column=0, row=0, padx=gui.WIDE_PAD, pady=(gui.WIDE_PAD, 0), sticky='new')
     topFrame.columnconfigure(2, weight=3)
 
-    # Mode selector was moved *after* histogram creation because it needs Histogram instance
+    Label(topFrame, text='Mode:').grid(column=0, row=0, sticky='w')
+    modeVar = tk.StringVar(value=key_from_value(modes, params['mode']))
+    modeSelector = OptionMenu(
+        topFrame,
+        modeVar,
+        key_from_value(modes, params['mode']),
+        *tuple(modes.keys()),
+    )
+    modeSelector.grid(column=1, row=0, padx=gui.WIDE_PAD, sticky='w')
+
     # getInfo = Button(topFrame, text='Get Info', width=8, state=tk.DISABLED, command=lambda: get_pico_info(root=root))
     # getInfo.grid(column=2, row=0, padx=(gui.MED_PAD, 0), sticky='w')
 
@@ -675,8 +692,12 @@ def main() -> None:
     tabControl.pack(expand=1, fill='both')
 
     """ `Run` tab """
-    summary = Labelframe(runTab, text='Summary')
-    summary.grid(column=0, row=0, columnspan=3, **gui.lbf_asym_padding, sticky='nesw')
+    summary_frame = Frame(runTab)
+    summary_padding = {'padx': (gui.WIDE_PAD, 0), 'pady': gui.WIDE_PAD, 'ipadx': gui.THIN_PAD, 'ipady': 0}
+    summary_frame.grid(column=0, row=0, **summary_padding, sticky='new')
+    summary = Labelframe(summary_frame, text='Summary')
+    # summary.grid(column=0, row=0, columnspan=3, **gui.lbf_asym_padding, sticky='nesw')
+    summary.grid(column=0, row=0, columnspan=3, pady=(0, gui.THIN_PAD), sticky='nesw')
 
     uiChLabels = dict.fromkeys(channelIDs)  # Can be updated to reflect channels on/off
     for i, id in enumerate(channelIDs, start=1):
@@ -780,23 +801,24 @@ def main() -> None:
     )
     logCheckBox.grid(
         column=0, row=14, columnspan=4,
-        padx=(gui.THIN_PAD, 0), pady=(gui.WIDE_PAD, 0),
+        padx=(gui.THIN_PAD, 0), pady=gui.WIDE_PAD,
         sticky='sw'
     )
 
     """ Histogram """
-    # TODO: adapt matplotlib canvas size to available space
-    histogramLbf = Labelframe(runTab, text='Histogram')
+    histogram_frame = Frame(runTab)
+    histogram_frame.grid(column=3, row=0, rowspan=3, **gui.hist_padding, sticky='nesw')
+    histogramLbf = Labelframe(histogram_frame, text='Histogram')
     histogramLbf.grid(
-        column=3, row=0, columnspan=6, rowspan=2, **gui.hist_padding, sticky='nesw'
+        column=0, row=0, columnspan=6, sticky='nesw'
     )
 
-    Label(runTab, text='Bounds:', anchor='w').grid(
-        column=3, row=2, padx=(gui.THIN_PAD, 0), pady=(gui.WIDE_PAD, 0), sticky='n'
+    Label(histogram_frame, text='Bounds', anchor='n').grid(
+        column=0, row=1, padx=(gui.THIN_PAD, 0), pady=(gui.THIN_PAD, 0), sticky='n'
     )
     histBounds = Slider(
-        runTab,
-        width=220,
+        histogram_frame,
+        width=230,
         height=40,
         min_val=-100,
         max_val=200,
@@ -806,99 +828,111 @@ def main() -> None:
         removable=False,
         addable=False
     )
-    histBounds.grid(column=4, row=2, pady=(gui.THIN_PAD, 0), sticky='n')
-    Label(runTab, text='Bins:', anchor='center').grid(
-        column=5, row=2, padx=0, pady=(gui.WIDE_PAD + gui.THIN_PAD, 0), sticky='n'
+    histBounds.grid(column=0, row=2, padx=0, pady=0, sticky='nesw')
+
+    Label(histogram_frame, text='Bins', anchor='n').grid(
+        column=2, row=1, padx=(gui.WIDE_PAD, 0), pady=(gui.THIN_PAD, 0), sticky='new'
     )
     histBinsVar = tk.IntVar(value=params['histBins'])
-
     binsSpbx = Spinbox(
-        runTab,
+        histogram_frame,
         from_=50,
         to=200,
         textvariable=histBinsVar,
-        width=6,
+        width=7,
         increment=10,
         validate='key',
         validatecommand=(root.register(gui.validate_bins), '%P')
     )
-    binsSpbx.grid(column=6, row=2, padx=(gui.MED_PAD, 0), pady=(gui.WIDE_PAD, 0), sticky='nw')
+    binsSpbx.grid(column=2, row=2, padx=(gui.WIDE_PAD, 0), pady=(gui.THIN_PAD, 0), sticky='nesw')
     binsSpbx.bind('<FocusOut>', lambda _: gui.assert_entry_ok(binsSpbx, (50, 200)))
 
-    histogram = Histogram(parent=histogramLbf, xlim=histBounds.get(), bins=histBinsVar.get())
+    Label(histogram_frame, text='M. delay', anchor='n').grid(
+        column=3, row=1, padx=(0, gui.WIDE_PAD), pady=(gui.THIN_PAD, 0), sticky='new'
+    )
+    masterDelayVar = tk.IntVar(value=params['masterDelay'])
+    masterDelay = Spinbox(
+        histogram_frame,
+        from_=-100,
+        to=100,
+        textvariable=masterDelayVar,
+        width=7,
+        increment=5,
+        validate='key',
+        validatecommand=(root.register(gui.validate_master_delay), '%P')
+    )
+    masterDelay.grid(column=3, row=2, padx=gui.WIDE_PAD, pady=(gui.THIN_PAD, 0), sticky='nsw')
+    masterDelay.bind('<FocusOut>', lambda _: gui.assert_entry_ok(masterDelay, (-100, 100)))
+    toggle_widget_state(
+        masterDelay, state='disabled' if params['mode'] == 'adc' else 'normal'
+    )
 
-    Label(topFrame, text='Mode:').grid(column=0, row=0, sticky='w')
-    modeVar = tk.StringVar(value=key_from_value(modes, params['mode']))
-    modeSelector = OptionMenu(
-        topFrame,
-        modeVar,
-        key_from_value(modes, params['mode']),
-        *tuple(modes.keys()),
-        command=lambda _: on_mode_change(modes[modeVar.get()], hist=histogram)
-        )
-    modeSelector.grid(column=1, row=0, padx=gui.WIDE_PAD, sticky='w')
+    histogram = Histogram(
+        parent=histogramLbf, xlim=histBounds.get(), bins=histBinsVar.get(), mdelay=masterDelay.get()
+    )
     histogram.mode = modes[modeVar.get()]
-
     histogram.create()
 
     histApplyBtn = Button(
-        runTab,
+        histogram_frame,
         text='Apply',
         width=8,
         command=lambda: histogram.create(
-            histBounds.get(), histBinsVar.get(), widget_hook=histApplyBtn
+            histBounds.get(), histBinsVar.get(), masterDelayVar.get(), widget_hook=histApplyBtn
         )
     )
     histApplyBtn.state(['disabled'])
     histApplyBtn.grid(
-        column=7, row=2,
-        padx=(gui.THIN_PAD, 0), pady=(gui.WIDE_PAD, 0), ipady=gui.THIN_PAD / 2,
-        sticky='ne'
+        column=4, row=1, rowspan=2,
+        padx=(gui.WIDE_PAD, 0), pady=(gui.WIDE_PAD, 0), ipady=gui.THIN_PAD / 2,
+        sticky='nesw'
     )
-    histSaveBtn = Button(runTab, text='Save as...', width=8, command=histogram.save)
+    histSaveBtn = Button(histogram_frame, text='Save as...', width=8, command=histogram.save)
     histSaveBtn.grid(
-        column=8, row=2, padx=0, pady=(gui.WIDE_PAD, 0), ipady=gui.THIN_PAD / 2,
-        sticky='ne'
+        column=5, row=1, rowspan=2,
+        padx=(gui.WIDE_PAD, 0), pady=(gui.WIDE_PAD, 0), ipady=gui.THIN_PAD / 2,
+        sticky='nesw'
     )
     # Enable Apply button if settings are changed
-    for variable in [histBinsVar, histBounds.bars[0]['tkVar'], histBounds.bars[1]['tkVar']]:
+    for variable in [histBinsVar, histBounds.bars[0]['tkVar'], histBounds.bars[1]['tkVar'], masterDelayVar]:
         variable.trace_add(
             'write', lambda var, index, mode: toggle_widget_state(histApplyBtn)
         )
 
     """ Start/Stop job buttons """
     startButton = Button(
-        runTab, text='START',
+        summary_frame, text='START',
         command=lambda: histogram.start(root=root, max_timeouts=params['maxTimeouts'])
     )
     startButton.grid(
         column=0, row=1,
-        padx=(gui.WIDE_PAD, 0), pady=0, ipadx=gui.THIN_PAD, ipady=gui.THIN_PAD,
-        sticky='esw'
+        padx=0, pady=(gui.MED_PAD, 0), ipadx=gui.THIN_PAD, ipady=gui.THIN_PAD,
+        sticky='new'
     )
-    stopButton = Button(runTab, text='STOP', command=histogram.stop)
+    stopButton = Button(summary_frame, text='STOP', command=histogram.stop)
     stopButton.grid(
         column=1, row=1,
-        padx=(gui.WIDE_PAD, 0), pady=0, ipadx=gui.THIN_PAD, ipady=gui.THIN_PAD,
-        sticky='esw'
+        padx=(gui.WIDE_PAD, 0), pady=(gui.MED_PAD, 0), ipadx=gui.THIN_PAD, ipady=gui.THIN_PAD,
+        sticky='new'
     )
     probeButton = Button(
-        runTab, text='PROBE',
+        summary_frame, text='PROBE',
         command=lambda: probe_pico(
             root=root, mode=modes[modeVar.get()], max_timeouts=params['maxTimeouts']
         )
     )
     probeButton.grid(
         column=2, row=1,
-        padx=(gui.WIDE_PAD, 0), pady=0, ipadx=gui.THIN_PAD, ipady=gui.THIN_PAD,
-        sticky='esw'
+        padx=(gui.WIDE_PAD, 0), pady=(gui.MED_PAD, 0), ipadx=gui.THIN_PAD, ipady=gui.THIN_PAD,
+        sticky='new'
     )
 
     """ Status textbox """
-    statusFrame = Frame(runTab)
-    statusFrame.grid(column=0, row=2, columnspan=3, padx=(gui.WIDE_PAD, 0), pady=(gui.WIDE_PAD, 0), sticky='nesw')
-    Label(statusFrame, text='Status:').grid(column=0, row=0, sticky='sw')
-    Label(statusFrame, textvariable=PV_STATUS).grid(column=1, row=0, sticky='sw')
+    status_frame = Frame(runTab)
+    # statusFrame.grid(column=0, row=2, columnspan=3, padx=(gui.WIDE_PAD, 0), pady=(gui.WIDE_PAD, 0), sticky='nesw')
+    status_frame.grid(column=0, row=1, padx=gui.WIDE_PAD, pady=0, sticky='nesw')
+    Label(status_frame, text='Status:', anchor='nw').grid(column=0, row=0)
+    Label(status_frame, textvariable=PV_STATUS, anchor='nw').grid(column=1, row=0)
 
     """ Settings tab. The 'settings' dictionary will temporarily store all the changes until
     the 'Apply' button is clicked, when such changes will be written to the config.ini file. """
@@ -1068,7 +1102,13 @@ def main() -> None:
     modeVar.trace_add(  # Disable `includeAmplitude` and `includePeakToPeak` if not in ADC
         'write',
         lambda var, index, mode: on_mode_change(
-            modes[modeVar.get()], hook_widgets=[includeAmplitude, includePeakToPeak]
+            modes[modeVar.get()],
+            hist=histogram,
+            hook_widgets=[
+                (masterDelay, ('tdc', 'mntm')),
+                (includeAmplitude, 'adc'),
+                (includePeakToPeak, 'adc')
+            ]
         )
     )
 

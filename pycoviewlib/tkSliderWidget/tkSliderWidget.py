@@ -17,8 +17,8 @@ class Slider(tk.Frame):
     BAR_COLOR_INNER = "#007dff"
     # BAR_COLOR_OUTTER = "#c2d6d6"
     BAR_COLOR_OUTTER = "#B3D9FF"
-    BAR_RADIUS = 10
-    BAR_RADIUS_INNER = BAR_RADIUS - 5
+    BAR_RADIUS = 12
+    BAR_RADIUS_INNER = BAR_RADIUS / 2
     DIGIT_PRECISION = ".0f"  # for showing in the canvas
 
     # relative step size in 0 to 1, set to 0 for no step size restiction
@@ -55,16 +55,16 @@ class Slider(tk.Frame):
         self.step_size_frac = step_size / float(max_val - min_val)  # step size fraction
 
         self.show_value = show_value
+        self.slider_x = Slider.BAR_RADIUS + 4  # x pos of the slider (left side)
         self.H = height
         self.W = width
         self.canv_H = self.H
         self.canv_W = self.W
         if not show_value:
-            self.slider_y = self.canv_H / 2  # y pos of the slider
+            self.slider_y = self.canv_H / 2 - 2  # y pos of the slider
         else:
-            self.slider_y = self.canv_H * 2 / 5
-        # added 8 to left pos to account for value label width
-        self.slider_x = Slider.BAR_RADIUS + 8  # x pos of the slider (left side)
+            self.slider_y = self.canv_H * 2 / 5 - 2
+        # added 4 to left pos to account for value label width
 
         self._val_change_callback = lambda lis: None
 
@@ -82,8 +82,12 @@ class Slider(tk.Frame):
             }
             self.bars.append(bar)
 
-        self.canv = tk.Canvas(self, height=self.canv_H, width=self.canv_W)
-        self.canv.pack()
+        self.canv = tk.Canvas(
+            self,
+            height=self.canv_H,
+            width=self.canv_W - 2 * Slider.BAR_RADIUS
+        )
+        self.canv.pack(expand=True, fill=tk.X)
         self.canv.bind("<Motion>", self._mouseMotion)
         self.canv.bind("<B1-Motion>", self._moveBar)
         if removable:
@@ -92,7 +96,10 @@ class Slider(tk.Frame):
             self.canv.bind("<ButtonRelease-1>", self._addBar)
 
         self.__addTrack(
-            self.slider_x, self.slider_y, self.canv_W - self.slider_x, self.slider_y
+            self.slider_x - self.BAR_RADIUS + 1,
+            self.slider_y,
+            self.canv_W - 4,
+            self.slider_y
         )
         for bar in self.bars:
             bar["Ids"] = self.__addBar(bar["Pos"])
@@ -150,8 +157,7 @@ class Slider(tk.Frame):
             bar = {
                 "Pos": pos,
                 "Ids": ids,
-                "Value": self.__calcPos(x) * (self.max_val - self.min_val)
-                + self.min_val,
+                "Value": self.__calcPos(x) * (self.max_val - self.min_val) + self.min_val,
             }
             self.bars.append(bar)
 
@@ -194,7 +200,7 @@ class Slider(tk.Frame):
             y_value = y + Slider.BAR_RADIUS + 8
             value = pos * (self.max_val - self.min_val) + self.min_val
             id_value = self.canv.create_text(
-                x, y_value, text=format(value, Slider.DIGIT_PRECISION)
+                x, y_value, text=format(value, Slider.DIGIT_PRECISION), font='SegoeUi 10'
             )
             return [id_outer, id_inner, id_value]
         else:
