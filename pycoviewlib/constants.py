@@ -16,8 +16,6 @@ maxADC = 32512
 channelIDs = ['A', 'B', 'C', 'D']
 dataFileTypes = ['txt', 'csv']
 modes = {'ADC': 'adc', 'TDC': 'tdc', 'Meantimer': 'mntm'}
-# timebases = ['200 ps', '400 ps', '800 ps', '1.6 ns', '3.2 ns']
-# timebasesPs = [200, 400, 800, 1600, 3200]
 timebases = {
     '200 ps': 200,
     '400 ps': 400,
@@ -26,7 +24,8 @@ timebases = {
     '3.2 ns': 3200
 }
 # couplings = {'AC 1MΩ': (0, 1000000), 'DC 1MΩ': (1, 1000000), 'DC 50Ω': (2, 50)}
-couplings = {'AC 1MΩ': (0, 1000000), 'DC 1MΩ': (1, 1000000), 'DC 50Ω': (2, 50)}
+# couplings = {('AC 1MΩ', 0): 1000000, ('DC 1MΩ', 1): 1000000, ('DC 50Ω', 2): 50}
+# couplings = {'AC 1MΩ': 1000000, 'DC 1MΩ': 1000000, 'DC 50Ω': 50}
 pCouplings = list(enums.PICO_COUPLING.values()) # necessary?
 # bandwidths = {'Full': 0, '25MHz': 1}
 bandwidths = {

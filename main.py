@@ -166,7 +166,7 @@ class ChannelSettings():
             prompt='Range (±mV)'
         )
         self.range_w.bind(
-            '<<ComboboxSelected>>', lambda _: self.__enforce_max_offset(name=name)
+            '<<ComboboxSelected>>', self.__enforce_max_offset
         )
         self.coupling_w = self.frame.add_combobox(
             id=f'ch{name}coupling',
@@ -194,7 +194,8 @@ class ChannelSettings():
         )
         self.toggle_channel_state(params[f'ch{name}enabled'])
 
-    def __enforce_max_offset(self, name: str) -> None:
+    # def __enforce_max_offset(self, ch: str) -> None:
+    def __enforce_max_offset(self) -> None:
         self.max_offset = int(self.range_w.get())
         # Ensure current analogue offset value is within range & bind validation
         gui.assert_entry_ok(self.analogoffset_w, (0, self.max_offset))
