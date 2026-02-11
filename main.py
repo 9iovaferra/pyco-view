@@ -1004,7 +1004,7 @@ def main() -> None:
 
     triggerSettings.add_spinbox(
         id='autoTrigms',
-        from_to=(500, 10000),
+        from_to=(500, 60000),
         step=100,
         prompt='Auto trigger (ms)',
         default=params['autoTrigms']
@@ -1022,7 +1022,7 @@ def main() -> None:
 
     triggerSettings.add_spinbox(
         id='maxTimeouts',
-        from_to=(3, 10),
+        from_to=(3, 100),
         step=1,
         prompt='Max. timeouts',
         default=params['maxTimeouts']
