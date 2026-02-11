@@ -1,17 +1,16 @@
 from ctypes import c_int16, c_int32, c_uint32, c_double, Array, byref
 import numpy as np
 from picosdk.psospa import psospa as ps
-from picosdk.errors import PicoSDKCtypesError
-from picosdk.constants import PICO_STATUS_LOOKUP
+from picosdk.constants import PICO_STATUS, PICO_STATUS_LOOKUP
 from picosdk.PicoDeviceEnums import picoEnum as enums
 from pycoviewlib.functions import (
     detect_gate_open_closed, calculate_charge, log, key_from_value, format_data
 )
 from pycoviewlib.constants import PV_DIR, chInputRanges, couplings, pCouplings, channelIDs
 import matplotlib.pyplot as plt
-from picosdk.functions import adc2mVV2, mV2adcV2, assert_pico_ok
+from picosdk.functions import adc2mVV2, mV2adcV2
 from datetime import datetime
-from typing import Union
+from typing import Optional, Union
 from itertools import islice
 
 
@@ -128,15 +127,18 @@ class ADC:
 
         self.count = 1  # Capture counter
 
-    def __check_health(self, status: hex, stop: bool = False) -> str | None:
-        try:
-            assert_pico_ok(status)
-        except PicoSDKCtypesError:
+    def __check_health(self, status: hex, stop: Optional[bool] = False) -> str | None:
+        if status != PICO_STATUS['PICO_OK']:
+            err = f'{PICO_STATUS_LOOKUP[status]}'
             if stop:
                 self.status['stop'] = ps.psospaStop(self.chandle)
-                self.__check_health(self.status['stop'])
+                if self.status['stop'] != PICO_STATUS['PICO_OK']:
+                    err += f"+{PICO_STATUS_LOOKUP[self.status['stop']]}"
             ps.psospaCloseUnit(self.chandle)
-            return f'{PICO_STATUS_LOOKUP[status]}'
+            if self.params['log'] and not self.probe:
+                log(self.loghandle, f"==> Job finished with error(s): {err}", time=True)
+            return err
+
         return None
 
     def setup(self) -> list[str] | None:
