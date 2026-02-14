@@ -19,18 +19,14 @@ def plot_data(
         bufferSignal: Array[c_int16],
         gate: dict,
         time: np.ndarray,
-        timeIntervalns: float,
         charge: float,
         peakToPeak: float,
         title: str,
-        ) -> None:
-    maxSignal = max(bufferSignal)
-    yLowerLim = min(min(bufferGate), min(bufferSignal)) * 1.1
-    yUpperLim = max(abs(max(bufferGate)), abs(maxSignal)) * 1.3
+        ) -> plt.Figure:
+    maxSignal = max(bufferSignal[gate['open']['index']:gate['closed']['index']])
 
     fig, ax = plt.subplots(figsize=(10, 6), layout='tight')
     ax.grid()
-    ax.set_ylim(yLowerLim, yUpperLim)
     ax.set_xlabel('Time (ns)')
     ax.set_ylabel('Voltage (mV)')
 
@@ -39,41 +35,43 @@ def plot_data(
     ax.plot(time, bufferSignal[:], color='green', label='Channel C (detector signal)')
 
     """ Charge area + bounds from gate """
-    fillY = bufferSignal[gate['open']['index']:gate['closed']['index']]
+    fillY = bufferSignal[gate['open']['index']:gate['closed']['index'] + 1]
     fillX = np.linspace(gate['open']['ns'], gate['closed']['ns'], num=len(fillY))
     ax.fill_between(
         fillX, fillY, color='lightgrey', label=f'Total deposited charge\n{charge:.2f} pC'
-        )
+    )
     ax.plot(
         [gate['open']['ns']] * 2, [gate['open']['mV'], maxSignal],
         linestyle='--', color='black'
-        )
+    )
     ax.plot(
         [gate['closed']['ns']] * 2, [gate['closed']['mV'], maxSignal],
         linestyle='--', color='black'
-        )
-
-    """ Gate open and closed points """
+    )
     ax.plot(
         gate['open']['ns'], gate['open']['mV'],
         color="black", marker=">", label=f"Gate open\n{gate['open']['ns']:.2f} ns"
-        )
+    )
     ax.plot(
         gate['closed']['ns'], gate['closed']['mV'],
         color="black", marker="<", label=f"Gate closed\n{gate['closed']['ns']:.2f} ns"
-        )
+    )
 
-    """ Amplitude and Peak-To-Peak """
+    """ Peak-To-Peak """
     ax.annotate(
-            '',
-            xy=(time[bufferSignal.index(maxSignal)], maxSignal),
-            xytext=(time[bufferSignal.index(maxSignal)], min(bufferSignal)),
-            fontsize=12,
-            arrowprops=dict(edgecolor='black', arrowstyle='<->', shrinkA=0, shrinkB=0)
-            )
+        '',
+        xy=(time[bufferSignal.index(maxSignal)], maxSignal),
+        xytext=(
+            time[bufferSignal.index(maxSignal)],
+            min(bufferSignal[gate['open']['index']:gate['closed']['index']])
+        ),
+        fontsize=12,
+        arrowprops=dict(edgecolor='black', arrowstyle='<->', shrinkA=0, shrinkB=0)
+    )
     ax.text(
-            time[bufferSignal.index(maxSignal)] + 0.5,
-            maxSignal - peakToPeak / 2, f'Peak-to-peak\n{peakToPeak:.2f} mV')
+        time[bufferSignal.index(maxSignal)] + 0.5,
+        maxSignal - peakToPeak / 2, f'Peak-to-peak\n{peakToPeak:.2f} mV'
+    )
 
     ax.set_title(title)
     ax.legend(loc='lower right')
@@ -353,7 +351,8 @@ class ADC:
             amplitude = abs(min(bufferSignalmV))
             data.append(amplitude)
         if self.params['includePeakToPeak'] or self.probe:
-            peakToPeak = abs(min(bufferSignalmV)) - abs(max(bufferSignalmV))
+            peakToPeak = abs(min(bufferSignalmV)) \
+                - abs(max(bufferSignalmV[gate['open']['index']:gate['closed']['index']]))
             data.append(peakToPeak)
         charge = calculate_charge(
             bufferSignalmV, (gate['open']['index'], gate['closed']['index']),
@@ -376,7 +375,7 @@ class ADC:
                 out.write(format_data(data, self.params['dformat']))
         else:
             figure = plot_data(
-                bufferGatemV, bufferSignalmV, gate, time, self.timeIntervalns,
+                bufferGatemV, bufferSignalmV, gate, time,
                 charge, peakToPeak, f'ADC Probe {self.timestamp}'
             )
             return figure, err
