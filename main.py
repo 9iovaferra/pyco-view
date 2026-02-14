@@ -502,12 +502,29 @@ def probe_pico(root: tk.Tk, mode: str, max_timeouts: int) -> None:
         fig.savefig(figureSavePath)
 
 
-def apply_changes(settings: dict, apply_btn: Button, ui_ch_labels: dict[str, Label]) -> None:
+def apply_changes(
+        apply_btn: Button,
+        ui_ch_labels: dict[str, Label],
+        preset: Optional[dict[str, Union[str, int, float]]]
+        ) -> None:
     """ Compares `settings` against `params`,
     sends updated values to `update_setting()` """
     keys: list[str] = []
     values: list[int | float | str] = []
     update: bool = False
+
+    if preset:  # TODO: find a cleaner solution
+        for key, value in preset.items():
+            if 'range' in key:
+                settings[key].set(chInputRanges[value])
+            elif 'coupling' in key:
+                settings[key].set(key_from_value(couplings, value))
+            elif 'Offset' in key:
+                settings[key].set(int(value * 1e3))
+            elif 'bandwidth' in key:
+                settings[key].set(key_from_value(bandwidths, value))
+            else:
+                settings[key].set(value)
     # Some settings require further processing before being saved to file
     special: dict[str, Union[int, float, str]] = {}
     for id in channelIDs:
@@ -1100,17 +1117,24 @@ def main() -> None:
     )
     fileSettings.arrange()
 
-    modeVar.trace_add(  # Disable `includeAmplitude` and `includePeakToPeak` if not in ADC
+    modeVar.trace_add(  # Redraw histogram and pull mode preset
         'write',
-        lambda var, index, mode: on_mode_change(
-            modes[modeVar.get()],
-            hist=histogram,
-            hook_widgets=[
-                (masterDelay, ('tdc', 'mntm')),
-                (includeAmplitude, 'adc'),
-                (includePeakToPeak, 'adc')
-            ]
-        )
+        lambda var, index, mode: [
+            on_mode_change(
+                modes[modeVar.get()],
+                hist=histogram,
+                hook_widgets=[
+                    (masterDelay, ('tdc', 'mntm')),
+                    (includeAmplitude, 'adc'),
+                    (includePeakToPeak, 'adc')
+                ]
+            ),
+            apply_changes(
+                applySettingsBtn,
+                uiChLabels,
+                preset=parse_config(f'presets/{modes[modeVar.get()]}.ini')
+            )
+        ]
     )
 
     """ Apply settings button """
@@ -1118,7 +1142,7 @@ def main() -> None:
         centered_frame,
         text='Apply',
         takefocus=False,
-        command=lambda: apply_changes(settings, applySettingsBtn, uiChLabels)
+        command=lambda: apply_changes(applySettingsBtn, uiChLabels)
     )
     applySettingsBtn.configure(state='disabled')  # Will only be enabled if a setting is changed
     applySettingsBtn.grid(
