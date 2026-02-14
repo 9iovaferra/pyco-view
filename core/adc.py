@@ -100,14 +100,13 @@ class ADC:
         self.channelGate = channelIDs.index(self.params['target'][0])
         self.channelSignal = [
             channelIDs.index(id) for id in channelIDs \
-            if self.params[f'ch{id}enabled'] and id != self.channelGate
+            if self.params[f'ch{id}enabled'] and id != channelIDs[self.channelGate]
         ][0]
 
         self.gateChRangeMax = chInputRanges[params[f'ch{channelIDs[self.channelGate]}range']] * 1000000
         self.sigChRangeMax = chInputRanges[params[f"ch{channelIDs[self.channelSignal]}range"]] * 1000000
-        self.sigChRangeMin = -self.sigChRangeMax * 1000000
-        self.gateAnalogOffset = params[f'ch{channelIDs[self.channelGate]}analogOffset']
-        self.sigAnalogOffset = params[f'ch{channelIDs[self.channelSignal]}analogOffset']
+        self.gateAnalogOffset = params[f'ch{channelIDs[self.channelGate]}analogOffset'] * 1000
+        self.sigAnalogOffset = params[f'ch{channelIDs[self.channelSignal]}analogOffset'] * 1000
         self.autoTrigms = params['autoTrigms']
         self.preTrigSamples = params['preTrigSamples']
         self.postTrigSamples = params['postTrigSamples']
@@ -120,7 +119,7 @@ class ADC:
         self.timebase = c_uint32()
         self.timeIntervalns = c_double()
         self.overvoltage = c_int16()  # Overvoltage (channel) flag
-        self.rmaxSamples = c_int32()  # Actual number of samples collected
+        self.rmaxSamples = c_int32(self.maxSamples)  # Actual number of samples collected
         self.maxADC = c_int16()
 
         self.count = 1  # Capture counter
@@ -214,7 +213,7 @@ class ADC:
         err.append(self.__check_health(self.status['getADCLimits']))
         
         self.thresholdADC = mV2adcV2(
-            self.params['thresholdmV'] + self.gateAnalogOffset * 1000,
+            self.params['thresholdmV'] + self.gateAnalogOffset,
             self.gateChRangeMax,
             self.maxADC
         )
@@ -320,11 +319,11 @@ class ADC:
         bufferSignalmV = adc2mVV2(bufferSigMax, self.sigChRangeMax, self.maxADC)
 
         """ Removing the analog offset from data points """
-        thresholdmV = (self.thresholdADC * chInputRanges[self.gateChRangeMax]) \
-            / self.maxADC.value - (self.gateAnalogOffset * 1000)
+        thresholdmV = (self.thresholdADC * (self.gateChRangeMax / 1000000)) \
+            / self.maxADC.value - self.gateAnalogOffset
         for i in range(self.maxSamples):
-            bufferGatemV[i] -= (self.gateAnalogOffset * 1000)
-            bufferSignalmV[i] -= (self.sigAnalogOffset * 1000)
+            bufferGatemV[i] -= self.gateAnalogOffset
+            bufferSignalmV[i] -= self.sigAnalogOffset
 
         """ Create time data """
         time = np.linspace(
