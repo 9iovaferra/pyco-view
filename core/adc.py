@@ -187,14 +187,14 @@ class ADC:
         ) """
         for id, name in enumerate(channelIDs):
             if self.params[f'ch{name}enabled']:
-                rangeMaxnv = chInputRanges[self.params[f'ch{name}range']] * 1000000
-                rangeMinnv = -rangeMaxnv
+                rangeMaxnV = chInputRanges[self.params[f'ch{name}range']] * 1000000
+                rangeMinnV = -rangeMaxnV
                 self.status[f'setCh{name}On'] = ps.psospaSetChannelOn(
                     self.chandle,
                     id,
                     pCouplings[self.params[f'ch{name}coupling']],
-                    rangeMinnv,
-                    rangeMaxnv,
+                    rangeMinnV,
+                    rangeMaxnV,
                     0,  # range type = PICO_PROBE_RANGE_INFO['PICO_PROBE_NONE_NV']
                     self.params[f'ch{name}analogOffset'],  # value in volts
                     self.params[f'ch{name}bandwidth']
@@ -278,13 +278,13 @@ class ADC:
             ps.psospaIsReady(self.chandle, byref(ready))
 
         """ Set data buffers location for data collection """
-        bufferAMax = (c_int16 * self.maxSamples)()
-        bufferCMax = (c_int16 * self.maxSamples)()
+        bufferGateMax = (c_int16 * self.maxSamples)()
+        bufferSigMax = (c_int16 * self.maxSamples)()
 
         self.status['setDataBufferGate'] = ps.psospaSetDataBuffer(
             self.chandle,
             self.channelGate,                      # source
-            byref(bufferAMax),                     # pointer to gate buffer
+            byref(bufferGateMax),                  # pointer to gate buffer
             self.maxSamples,
             enums.PICO_DATA_TYPE['PICO_INT16_T'],
             0,                                     # waveform (segment index)
@@ -296,7 +296,7 @@ class ADC:
         self.status['setDataBufferSig'] = ps.psospaSetDataBuffer(
             self.chandle,
             self.channelSignal,                    # source
-            byref(bufferCMax),                     # pointer to signal buffer
+            byref(bufferSigMax),                   # pointer to signal buffer
             self.maxSamples,
             enums.PICO_DATA_TYPE['PICO_INT16_T'],
             0,                                     # waveform (segment index)
@@ -318,8 +318,8 @@ class ADC:
         err.append(self.__check_health(self.status['getValues'], stop=True))
 
         """ Convert ADC counts data to mV """
-        bufferGatemV = adc2mVV2(bufferAMax, self.gateChRangeMax, self.maxADC)
-        bufferSignalmV = adc2mVV2(bufferCMax, self.sigChRangeMax, self.maxADC)
+        bufferGatemV = adc2mVV2(bufferGateMax, self.gateChRangeMax, self.maxADC)
+        bufferSignalmV = adc2mVV2(bufferSigMax, self.sigChRangeMax, self.maxADC)
 
         """ Removing the analog offset from data points """
         thresholdmV = (self.thresholdADC * chInputRanges[self.gateChRangeMax]) \

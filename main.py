@@ -194,7 +194,6 @@ class ChannelSettings():
         )
         self.toggle_channel_state(params[f'ch{name}enabled'])
 
-    # def __enforce_max_offset(self, ch: str) -> None:
     def __enforce_max_offset(self) -> None:
         self.max_offset = int(self.range_w.get())
         # Ensure current analogue offset value is within range & bind validation
@@ -601,10 +600,13 @@ def on_mode_change(
         hist.create()
     if hook_widgets is not None:
         for widget in hook_widgets:
-            toggle_widget_state(widget[0], state='disabled' if mode not in widget[1] else 'normal')
+            toggle_widget_state(
+                widget[0],
+                state='disabled' if mode not in widget[1] else 'normal'
+            )
 
 
-def toggle_widget_state(widget: Widget, state: str = 'normal') -> None:
+def toggle_widget_state(widget: Widget, state: Optional[str] = 'normal') -> None:
     widget.configure(state=state)
 
 
@@ -1069,17 +1071,6 @@ def main() -> None:
         settings[f'ch{id}coupling'] = chSettings[id].frame.variables[f'ch{id}coupling']
         settings[f'ch{id}analogOffset'] = chSettings[id].frame.variables[f'ch{id}analogOffset']
         settings[f'ch{id}bandwidth'] = chSettings[id].frame.variables[f'ch{id}bandwidth']
-
-        # Enable/disable channel settings and target channel(s) checkboxes in triggerSettings
-        # chSettings.enabled_w.configure(
-        #     command=lambda: [
-        #         chSettings.toggle_channel_state(settings[f'ch{id}enabled'].get()),
-        #         toggle_widget_state(
-        #             triggerSettings.children[f'ch{id}enabled'][0],
-        #             state='normal' if settings[f'ch{id}enabled'].get() else 'disabled'
-        #         )
-        #     ]
-        # )
     
     """ File settings """
     fileSettings = gui.PVLabelframe(

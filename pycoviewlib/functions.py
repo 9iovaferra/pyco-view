@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 def mV2adc(thresh: float, offset: float, range_: int) -> int:
-    """ Convert millivolts to ADC counts """
+    """ [DEPRECATED] Convert millivolts to ADC counts """
     return int((thresh + offset * 1000) / range_ * maxADC)
 
 
