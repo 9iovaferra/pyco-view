@@ -321,7 +321,8 @@ class Histogram():
 
         err = self.applet.setup()
         if not all([e is None for e in err]):
-            PV_STATUS.set(f'(!) {", ".join([e for e in err if e is not None])}')
+            self.root.info_window(info=list(dict.fromkeys(err)))
+            PV_STATUS.set('Error!')
             return
         self.stop_event.clear()
         self.follower.start()
@@ -342,11 +343,13 @@ class Histogram():
                 self.stop_event.set()
                 err = self.applet.stop()
                 if err is not None:
-                    PV_STATUS.set(f'(!) {err}')
+                    self.root.info_window(info=[err])
+                    PV_STATUS.set('Error!')
                 break
             data, err = self.applet.run()
             if not all([e is None for e in err]):
-                PV_STATUS.set(f"(!) {','.join([e for e in err if e is not None])}")
+                self.root.info_window(info=list(dict.fromkeys(err)))
+                PV_STATUS.set('Error!')
                 self.stop_event.set()
                 continue
             elif data is None:
