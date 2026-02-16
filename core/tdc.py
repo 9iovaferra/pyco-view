@@ -126,7 +126,7 @@ class TDC:
         self.targets = params['target']
         self.nTargets = len(params['target'])
         self.analogOffset = {id: params[f'ch{id}analogOffset'] * 1000 for id in self.targets}
-        self.chRange = {id: params[f'ch{id}range'] for id in self.targets}
+        self.chRange = {id: chInputRanges[params[f'ch{id}range']] * 1000000 for id in self.targets}
         self.autoTrigms = params['autoTrigms']
         self.preTrigSamples = params['preTrigSamples']
         self.postTrigSamples = params['postTrigSamples']
@@ -228,8 +228,8 @@ class TDC:
         err.append(self.__check_health(self.status['getADCLimits']))
         
         self.thresholdADC = {id: mV2adcV2(
-            self.params['thresholdmV'] + self.analogOffset,
-            self.gateChRangeMax,
+            self.params['thresholdmV'] + self.analogOffset[id],
+            self.chRange[id],
             self.maxADC
         ) for id in self.targets}
 
@@ -268,19 +268,19 @@ class TDC:
         directions = (TriggerDirection * self.nTargets)()
         properties = (TriggerProperties * self.nTargets)()
 
-        for idx, _ in enumerate(self.targets):
-            conditions[idx].source = c_int32(idx)
+        for idx, ch in enumerate(self.targets):
+            conditions[idx].source = c_int32(channelIDs.index(ch))
             conditions[idx].condition = enums.PICO_TRIGGER_STATE['PICO_CONDITION_TRUE']
 
-            directions[idx].channel = c_int32(idx)
-            directions[idx].direction = enums.PICO_THRESHOLD_DIRECTION['PICO_FALLING']
+            directions[idx].channel = c_int32(channelIDs.index(ch))
+            directions[idx].direction = enums.PICO_THRESHOLD_DIRECTION['PICO_BELOW']
             directions[idx].thresholdMode = enums.PICO_THRESHOLD_MODE['PICO_LEVEL']
 
-            properties[idx].thresholdUpper = self.thresholdADC[idx]
+            properties[idx].thresholdUpper = self.thresholdADC[ch]
             properties[idx].thresholdUpperHysteresis = 0
             properties[idx].thresholdLower = 0
             properties[idx].thresholdLowerHysteresis = 0
-            properties[idx].channel = c_int32(idx)
+            properties[idx].channel = c_int32(channelIDs.index(ch))
 
         self.status['setTriggerChConditions'] = ps.psospaSetTriggerChannelConditions(
             self.chandle, byref(conditions), self.nTargets, self.actionClearAdd
@@ -288,7 +288,7 @@ class TDC:
         err.append(self.__check_health(self.status['setTriggerChConditions']))
 
         self.status['setTriggerChannelDirections'] = ps.psospaSetTriggerChannelDirections(
-            self.chandle, *directions, self.nTargets
+            self.chandle, byref(directions), self.nTargets
         )
         err.append(self.__check_health(self.status['setTriggerChannelDirections']))
 
@@ -344,7 +344,7 @@ class TDC:
         ready = c_int16(0)
         check = c_int16(0)
         while ready.value == check.value:
-            self.status['isReady'] = ps.ps6000IsReady(self.chandle, byref(ready))
+            self.status['isReady'] = ps.psospaIsReady(self.chandle, byref(ready))
 
         """ Set data buffers location for data collection """
         bufferAMax = (c_int16 * self.maxSamples)()
@@ -383,12 +383,12 @@ class TDC:
 
         """ Removing the analog offset from data points """
         thresholdmV = {
-            id: (self.thresholdADC * (self.chRange[id] / 1000000)) \
-            / self.maxADC.value - self.analogOffset for id in self.targets
+            id: (self.thresholdADC[id] * (self.chRange[id] / 1000000)) \
+            / self.maxADC.value - self.analogOffset[id] for id in self.targets
         }
         for i in range(self.rmaxSamples.value):
-            bufferChAmV[i] -= self.analogOffset
-            bufferChCmV[i] -= self.analogOffset
+            bufferChAmV[i] -= self.analogOffset['A']
+            bufferChCmV[i] -= self.analogOffset['C']
 
         """ Create time data """
         time = np.linspace(
