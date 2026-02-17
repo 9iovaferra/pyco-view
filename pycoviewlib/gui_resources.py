@@ -50,6 +50,12 @@ def validate_master_delay(entry: str) -> bool:
     ]) and search('[a-zA-Z]', entry) is None
     return valid
 
+def escape(widget: Widget, default: Any) -> None:
+    widget.delete(0, 'end')
+    widget.insert(0, default)
+    widget.winfo_toplevel().focus_set()
+
+
 # -------------------------- Custom Tkinter wrapper --------------------------
 # TODO: make id checker function for consistency
 def assert_entry_ok(widget, valid_range: tuple[int, int]) -> None:
@@ -164,6 +170,15 @@ class PVLabelframe(Labelframe):
     def __assert_entry_ok(self, widget, valid_range: tuple[int, int]) -> None:
         assert_entry_ok(widget, valid_range)
 
+    def __assert_option_ok(self, id: str, valid_options: tuple[str], default: Any) -> None:
+        if self.children[id][0].get() not in valid_options:
+            self.__escape(id, default)
+
+    def __escape(self, id: str, default: Any) -> None:
+        self.children[id][0].delete(0, 'end')
+        self.children[id][0].insert(0, default)
+        self.parent.focus_set()
+
     def arrange(self) -> None:
         for widget, grid_kwargs in self.children.values():
             widget.grid(**grid_kwargs)
@@ -221,6 +236,7 @@ class PVLabelframe(Labelframe):
             takefocus=0
         )
         spinbox.bind('<FocusOut>', lambda _: self.__assert_entry_ok(spinbox, from_to))
+        spinbox.bind('<Escape>', lambda _: self.__escape(id, default))
         self.__auto_place(
             spinbox,
             id=id,
@@ -332,6 +348,8 @@ class PVLabelframe(Labelframe):
             takefocus=0,
             width=width
         )
+        combobox.bind('<FocusOut>', lambda _: self.__assert_option_ok(id, options, default))
+        combobox.bind('<Escape>', lambda _: self.__escape(id, default))
         self.__auto_place(
             combobox,
             id=id,

@@ -701,6 +701,7 @@ def main() -> None:
     )
     filename.grid(column=3, row=0, pady=gui.THIN_PAD, sticky='ne')
     filename.bind('<FocusOut>', lambda _: update_setting(['filename'], [settings['filename'].get()]))
+    filename.bind('<Escape>', lambda _: gui.escape(filename, params['filename']))
 
     """ `Run` and `Settings` tabs """
     tabsFrame = Frame(root, padding=(gui.THIN_PAD, 0, gui.THIN_PAD, gui.THIN_PAD))
@@ -869,6 +870,7 @@ def main() -> None:
     )
     binsSpbx.grid(column=2, row=2, padx=(gui.WIDE_PAD, 0), pady=(gui.THIN_PAD, 0), sticky='nesw')
     binsSpbx.bind('<FocusOut>', lambda _: gui.assert_entry_ok(binsSpbx, (50, 200)))
+    binsSpbx.bind('<Escape>', lambda _: gui.escape(binsSpbx, params['histBins']))
 
     Label(histogram_frame, text='M. delay', anchor='n').grid(
         column=3, row=1, padx=(0, gui.WIDE_PAD), pady=(gui.THIN_PAD, 0), sticky='new'
@@ -886,6 +888,7 @@ def main() -> None:
     )
     masterDelay.grid(column=3, row=2, padx=gui.WIDE_PAD, pady=(gui.THIN_PAD, 0), sticky='nsw')
     masterDelay.bind('<FocusOut>', lambda _: gui.assert_entry_ok(masterDelay, (-100, 100)))
+    masterDelay.bind('<Escape>', lambda _: gui.escape(masterDelay, params['masterDelay']))
     toggle_widget_state(
         masterDelay, state='disabled' if params['mode'] == 'adc' else 'normal'
     )
