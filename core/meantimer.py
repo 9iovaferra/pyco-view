@@ -98,10 +98,10 @@ class Meantimer:
         self.actionAdd = enums.PICO_ACTION['PICO_ADD']
         self.actionClearAdd = self.actionClearAll | self.actionAdd
         self.downsampleModeRaw = enums.PICO_RATIO_MODE['PICO_RATIO_MODE_RAW']
-        self.target = params['target']
+        self.targets = params['target']
         self.nTargets = len(params['target'])
         self.analogOffset = {id: params[f'ch{id}analogOffset'] * 1000 for id in self.targets}
-        self.chRange = {id: params[f'ch{id}range'] for id in self.targets}
+        self.chRange = {id: chInputRanges[params[f'ch{id}range']] * 1000000 for id in self.targets}
         self.autoTrigms = params['autoTrigms']
         self.preTrigSamples = params['preTrigSamples']
         self.postTrigSamples = params['postTrigSamples']
@@ -132,7 +132,10 @@ class Meantimer:
     def setup(self) -> str | None:
         err = []
 
-        # Logging runtime parameters 
+        if self.nTargets != 4:
+            return err.append(f'Expected 4 trigger targets, got {self.nTargets}')
+
+        # Logging runtime parameters
         if self.params['log'] and not self.probe:
             log(self.loghandle, '==> Running acquisition with parameters:', time=True)
             col_width = max([len(k) for k in self.params.keys()])
@@ -155,7 +158,6 @@ class Meantimer:
             None                  # returned power info (not needed)
         )
         err.append(self.__check_health(self.status['openUnit']))
-
 
         """ Setting up channels according to `params`
         ps.psospaSetChannelOn(
@@ -201,11 +203,10 @@ class Meantimer:
         err.append(self.__check_health(self.status['getADCLimits']))
         
         self.thresholdADC = {id: mV2adcV2(
-            self.params['thresholdmV'] + self.analogOffset,
-            self.gateChRangeMax,
+            self.params['thresholdmV'] + self.analogOffset[id],
+            self.chRange[id],
             self.maxADC
         ) for id in self.targets}
-
 
         """ Setting up advanced trigger on target channels.
         ps.psospaSetTriggerChannelConditions(
@@ -242,19 +243,19 @@ class Meantimer:
         directions = (TriggerDirection * self.nTargets)()
         properties = (TriggerProperties * self.nTargets)()
 
-        for idx, _ in enumerate(self.targets):
-            conditions[idx].source = c_int32(idx)
+        for idx, ch in enumerate(self.targets):
+            conditions[idx].source = c_int32(channelIDs.index(ch))
             conditions[idx].condition = enums.PICO_TRIGGER_STATE['PICO_CONDITION_TRUE']
 
-            directions[idx].channel = c_int32(idx)
-            directions[idx].direction = enums.PICO_THRESHOLD_DIRECTION['PICO_FALLING']
+            directions[idx].channel = c_int32(channelIDs.index(ch))
+            directions[idx].direction = enums.PICO_THRESHOLD_DIRECTION['PICO_BELOW']
             directions[idx].thresholdMode = enums.PICO_THRESHOLD_MODE['PICO_LEVEL']
 
-            properties[idx].thresholdUpper = self.thresholdADC[idx]
+            properties[idx].thresholdUpper = self.thresholdADC[ch]
             properties[idx].thresholdUpperHysteresis = 0
             properties[idx].thresholdLower = 0
             properties[idx].thresholdLowerHysteresis = 0
-            properties[idx].channel = c_int32(idx)
+            properties[idx].channel = c_int32(channelIDs.index(ch))
 
         self.status['setTriggerChConditions'] = ps.psospaSetTriggerChannelConditions(
             self.chandle, byref(conditions), self.nTargets, self.actionClearAdd
@@ -262,7 +263,7 @@ class Meantimer:
         err.append(self.__check_health(self.status['setTriggerChConditions']))
 
         self.status['setTriggerChannelDirections'] = ps.psospaSetTriggerChannelDirections(
-            self.chandle, *directions, self.nTargets
+            self.chandle, byref(directions), self.nTargets
         )
         err.append(self.__check_health(self.status['setTriggerChannelDirections']))
 
@@ -314,11 +315,11 @@ class Meantimer:
         )
         err.append(self.__check_health(self.status['runBlock'], stop=True))
 
-        """ Check for data collection to finish using ps6000IsReady """
+        """ Check for data collection to finish using psospaIsReady """
         ready = c_int16(0)
         check = c_int16(0)
         while ready.value == check.value:
-            self.status['isReady'] = ps.ps6000IsReady(self.chandle, byref(ready))
+            self.status['isReady'] = ps.psospaIsReady(self.chandle, byref(ready))
 
         """ Create buffers ready for assigning pointers for data collection """
         bufferAMax = (c_int16 * self.maxSamples)()
@@ -332,16 +333,16 @@ class Meantimer:
         }
 
         """ Set data buffers location for data collection """
-        for id, name in enumerate(channelIDs):
+        for idx, name in enumerate(self.targets):
             self.status[f'setDataBuffer{name}'] = ps.psospaSetDataBuffer(
                 self.chandle,
-                id,                                                 # source
-                byref(buffers[name]),                               # pointer to gate buffer
+                channelIDs.index(name),                              # source
+                byref(buffers[name]),                                # pointer to gate buffer
                 self.maxSamples,
                 enums.PICO_DATA_TYPE['PICO_INT16_T'],
-                0,                                                  # waveform (segment index)
-                self.downsampleModeRaw,                             # downsample mode
-                self.actionClearAdd if id == 0 else self.actionAdd  # clear busy bufs and/or add new
+                0,                                                   # waveform (segment index)
+                self.downsampleModeRaw,                              # downsample mode
+                self.actionClearAdd if idx == 0 else self.actionAdd  # clear busy bufs and/or add new
             )
             err.append(self.__check_health(self.status[f'setDataBuffer{name}'], stop=True))
 
@@ -366,14 +367,14 @@ class Meantimer:
 
         """ Removing the analog offset from data points """
         thresholdmV = {
-            id: (self.thresholdADC * (self.chRange[id] / 1000000)) \
-            / self.maxADC.value - self.analogOffset for id in self.targets
+            id: (self.thresholdADC[id] * (self.chRange[id] / 1000000)) \
+            / self.maxADC.value - self.analogOffset[id] for id in self.targets
         }
         for i in range(self.maxSamples):
-            bufferChAmV[i] -= self.analogOffset
-            bufferChBmV[i] -= self.analogOffset
-            bufferChCmV[i] -= self.analogOffset
-            bufferChDmV[i] -= self.analogOffset
+            bufferChAmV[i] -= self.analogOffset['A']
+            bufferChBmV[i] -= self.analogOffset['B']
+            bufferChCmV[i] -= self.analogOffset['C']
+            bufferChDmV[i] -= self.analogOffset['D']
 
         """ Create time data """
         time = np.linspace(
@@ -434,7 +435,7 @@ class Meantimer:
         self.status['stop'] = ps.psospaStop(self.chandle)
         err = self.__check_health(self.status['stop'])
         ps.psospaCloseUnit(self.chandle)
-        if err is not None:
+        if err:
             if self.params['log'] and not self.probe:
                 log(self.loghandle, f'==> Job finished with error: {err}', time=True)
             return err
