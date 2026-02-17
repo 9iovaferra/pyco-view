@@ -6,7 +6,7 @@ import tkinter as tk
 from tkinter.filedialog import asksaveasfilename
 from tkinter.ttk import (
     Widget, Label, Frame, Labelframe, Entry, Checkbutton, Button, Spinbox,
-    OptionMenu, Notebook, Scrollbar
+    OptionMenu, Notebook, Scrollbar, Separator
 )
 try:
     from pyi_splash import close as pyi_splash_close  # Close splash screen when app has loaded
@@ -42,14 +42,21 @@ class App(tk.Tk):
         self.wm_iconphoto(False, dockIcon)
         self.protocol('WM_DELETE_WINDOW', self.delete_window)
 
-        self.menu_bar = tk.Menu(self, relief='flat', bd=0)
+        self.menu_bar = tk.Menu(
+            self, relief='flat', bd=0, font='SegoeUi 10',
+            activeborderwidth=0, activebackground='#CCC', activeforeground='#000'
+        )
         self.config(menu=self.menu_bar)
-        self.file_menu = tk.Menu(self.menu_bar, tearoff=0)
+        self.file_menu = tk.Menu(
+            self.menu_bar, tearoff=0, relief='solid',
+            activeborderwidth=0, activebackground='#CCC', activeforeground='#000'
+        )
         self.menu_bar.add_cascade(menu=self.file_menu, label='File')
         self.file_menu.add_command(label='Open data folder', command=self.show_data_folder)
-        # self.file_menu.add_separator()
-        # self.file_menu.add_command(label='Generate config file', command=self.generate_config)
-        self.help_menu = tk.Menu(self.menu_bar, tearoff=0)
+        self.help_menu = tk.Menu(
+            self.menu_bar, tearoff=0, relief='solid',
+            activeborderwidth=0, activebackground='#CCC', activeforeground='#000'
+        )
         self.menu_bar.add_cascade(menu=self.help_menu, label='Help')
         self.help_menu.add_command(label='About', command=self.open_about_window)
 
@@ -673,6 +680,14 @@ def main() -> None:
     })
 
     """ Top frame - contains `Mode` selector and `Filename` textbox """
+    Separator(root, orient='horizontal').grid(
+        column=0,
+        row=0,
+        columnspan=3,
+        padx=gui.WIDE_PAD,
+        pady=0,
+        sticky='ew'
+    )
     topFrame = Frame(root, padding=(gui.THIN_PAD, 0, gui.THIN_PAD, gui.THIN_PAD))
     topFrame.grid(column=0, row=1, padx=gui.WIDE_PAD, pady=(gui.WIDE_PAD, 0), sticky='new')
     topFrame.columnconfigure(2, weight=3)
@@ -865,7 +880,7 @@ def main() -> None:
         from_=50,
         to=200,
         textvariable=histBinsVar,
-        width=7,
+        width=8,
         increment=10,
         validate='key',
         validatecommand=(root.register(gui.validate_bins), '%P')
@@ -874,8 +889,8 @@ def main() -> None:
     binsSpbx.bind('<FocusOut>', lambda _: gui.assert_entry_ok(binsSpbx, (50, 200)))
     binsSpbx.bind('<Escape>', lambda _: gui.escape(binsSpbx, params['histBins']))
 
-    Label(histogram_frame, text='M. delay', anchor='n').grid(
-        column=3, row=1, padx=(0, gui.WIDE_PAD), pady=(gui.THIN_PAD, 0), sticky='new'
+    Label(histogram_frame, text='M. delay (ns)', anchor='n').grid(
+        column=3, row=1, padx=0, pady=(gui.THIN_PAD, 0), sticky='new'
     )
     masterDelayVar = tk.IntVar(value=params['masterDelay'])
     masterDelay = Spinbox(
@@ -883,8 +898,8 @@ def main() -> None:
         from_=-100,
         to=100,
         textvariable=masterDelayVar,
-        width=7,
-        increment=5,
+        width=8,
+        increment=1,
         validate='key',
         validatecommand=(root.register(gui.validate_master_delay), '%P')
     )
@@ -1095,7 +1110,8 @@ def main() -> None:
         includePeakToPeak, state='disabled' if modes[modeVar.get()] != 'adc' else 'normal'
     )
     fileSettings.add_optionmenu(
-        id='dataFileType', prompt='Save data as', default=params['dformat'], options=dataFileTypes
+        id='dataFileType', prompt='Save data as', default=params['dformat'], options=dataFileTypes,
+        padding=dict(pady=(0, gui.WIDE_PAD)), rowspan=2
     )
     settings['dformat'] = fileSettings.get_raw('dataFileType')
 
