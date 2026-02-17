@@ -233,7 +233,7 @@ class Histogram():
         self.job: Thread = None
         self.fig, self.ax = plt.subplots(figsize=(6, 4.3), layout='tight')
         self.bins = bins
-        self.mdelay = mdelay
+        self.mdelay = 0 if mode == 'adc' else int(mdelay)
         self.xlim = xlim
         self.ylim = ylim if ylim else [0, 15]
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.parent)
@@ -379,7 +379,9 @@ class Histogram():
         if count % 5 == 0:  # Only update every 5 counts
             if self.ax.patches:
                 _ = [bar.remove() for bar in self.ax.patches]
-            counts, bins = np.histogram(self.buffer, range=self.xlim, bins=self.bins)
+            counts, bins = np.histogram(
+                [value + self.mdelay for value in self.buffer], range=self.xlim, bins=self.bins
+            )
             self.ax.stairs(counts, bins, fill=True, color=gui.HIST_COLOR, zorder=3)
 
             yUpperLim = int(self.ax.get_ylim()[1])
@@ -609,6 +611,8 @@ def on_mode_change(
     update_setting(['mode'], [mode])
     if hist:
         hist.mode = mode
+        if mode == 'adc':
+            hist.mdelay = 0
         hist.create()
     if hook_widgets:
         for widget in hook_widgets:
