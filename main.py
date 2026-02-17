@@ -1,6 +1,6 @@
 """
-Copyright (C) 2019 Pico Technology Ltd.
-tkSliderWidget Copyright (c) 2020, Mengxun Li
+Copyright (C) 2024 Pico Technology Ltd. See LICENSE for terms.
+tkSliderWidget Copyright (C) 2020, Mengxun Li
 """
 import tkinter as tk
 from tkinter.filedialog import asksaveasfilename
@@ -166,7 +166,7 @@ class ChannelSettings():
             prompt='Range (±mV)'
         )
         self.range_w.bind(
-            '<<ComboboxSelected>>', self.__enforce_max_offset
+            '<<ComboboxSelected>>', lambda _: self.__enforce_max_offset
         )
         self.coupling_w = self.frame.add_combobox(
             id=f'ch{name}coupling',
@@ -215,19 +215,20 @@ class Histogram():
             bins: int,
             mdelay: int,
             xlim: list[int],
-            ylim: list[int] = None,
+            ylim: Optional[list[int]] = None,
             mode: Optional[str] = '',
             ):
-        self.parent = parent
-        self.root = None
-        self.mode = mode
-        self.buffer = []
-        self.follower = None
+        self.parent: Labelframe = parent
+        self.root: tk.Tk = None
+        self.probe: bool = False
+        self.mode: str = mode
+        self.buffer: list[float] = []
+        self.job: Thread = None
         self.fig, self.ax = plt.subplots(figsize=(6, 4.3), layout='tight')
         self.bins = bins
         self.mdelay = mdelay
         self.xlim = xlim
-        self.ylim = ylim if ylim is not None else [0, 15]
+        self.ylim = ylim if ylim else [0, 15]
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.parent)
         self.canvas.get_tk_widget().grid(
             column=0, row=0, padx=gui.THIN_PAD, pady=gui.THIN_PAD, sticky='nesw'
@@ -250,7 +251,7 @@ class Histogram():
         self.ax.set_xlabel('Charge (pC)' if self.mode == 'adc' else 'Delay (ns)')
         self.ax.set_ylabel('Counts')
 
-        if bounds is not None and bounds != self.xlim:
+        if bounds and bounds != self.xlim:
             self.xlim = bounds
             self.ax.set_xlim(bounds)
             update_setting(
@@ -288,7 +289,7 @@ class Histogram():
             self.mdelay = mdelay
             update_setting(['masterDelay'], [mdelay])
 
-        if widget_hook is not None:
+        if widget_hook:
             widget_hook.state(['disabled'])
 
         self.canvas.draw()
@@ -342,7 +343,7 @@ class Histogram():
                 PV_STATUS.set('Too many timeouts, please check your setup.')
                 self.stop_event.set()
                 err = self.applet.stop()
-                if err is not None:
+                if err:
                     self.root.info_window(info=[err])
                     PV_STATUS.set('Error!')
                 break
@@ -354,8 +355,9 @@ class Histogram():
                 continue
             elif data is None:
                 PV_STATUS.set(
-                    f'Capture #{count}... skipping (trigger timeout {max_timeouts - self.timeout + 1})'
-                    )
+                    (f'Capture #{count}... skipping '
+                     f'(trigger timeout {max_timeouts - self.timeout + 1})')
+                )
                 self.timeout -= 1
                 continue
             self.timeout = max_timeouts
@@ -391,7 +393,7 @@ class Histogram():
                 self.ax.set_yticks(
                     ticks=list(range(0, yUpperLim + 2 * yLimNudge, yLimNudge)),
                     labels=[f'{lbl}' for lbl in range(0, yUpperLim + 2 * yLimNudge, yLimNudge)]
-                    )
+                )
             self.canvas.draw()
 
         if not self.stop_event.is_set():
@@ -472,7 +474,7 @@ def probe_pico(root: tk.Tk, mode: str, max_timeouts: int) -> None:
     err = applet.stop()
 
     if timeout != 0:
-        if err is not None:
+        if err:
             PV_STATUS.set('Error!')
             root.info_window(info=[err])
             return
@@ -507,7 +509,7 @@ def probe_pico(root: tk.Tk, mode: str, max_timeouts: int) -> None:
 def apply_changes(
         apply_btn: Button,
         ui_ch_labels: dict[str, Label],
-        preset: Optional[dict[str, Union[str, int, float]]]
+        preset: Optional[dict[str, Union[str, int, float]]] = None
         ) -> None:
     """ Compares `settings` against `params`,
     sends updated values to `update_setting()` """
@@ -570,7 +572,7 @@ def update_setting(
         ini.writelines(lines)
 
     # Updating `Summary`
-    if ui_ch_labels is not None:  # UI needs update only on `Apply` button click
+    if ui_ch_labels:  # UI needs update only on `Apply` button click
         for id, color in zip(channelIDs, gui.CH_COLORS.values()):
             ui_textvar[f'ch{id}range'].set(f"±{chInputRanges[params[f'ch{id}range']]}")
             ui_textvar[f'ch{id}analogOffset'].set(int(params[f'ch{id}analogOffset'] * 1000))
@@ -598,10 +600,10 @@ def on_mode_change(
         hook_widgets: Optional[list[tuple[Widget, str | tuple[str]]]] = None
         ) -> None:
     update_setting(['mode'], [mode])
-    if hist is not None:
+    if hist:
         hist.mode = mode
         hist.create()
-    if hook_widgets is not None:
+    if hook_widgets:
         for widget in hook_widgets:
             toggle_widget_state(
                 widget[0],
@@ -672,7 +674,7 @@ def main() -> None:
 
     """ Top frame - contains `Mode` selector and `Filename` textbox """
     topFrame = Frame(root, padding=(gui.THIN_PAD, 0, gui.THIN_PAD, gui.THIN_PAD))
-    topFrame.grid(column=0, row=0, padx=gui.WIDE_PAD, pady=(gui.WIDE_PAD, 0), sticky='new')
+    topFrame.grid(column=0, row=1, padx=gui.WIDE_PAD, pady=(gui.WIDE_PAD, 0), sticky='new')
     topFrame.columnconfigure(2, weight=3)
 
     Label(topFrame, text='Mode:').grid(column=0, row=0, sticky='w')
@@ -705,7 +707,7 @@ def main() -> None:
 
     """ `Run` and `Settings` tabs """
     tabsFrame = Frame(root, padding=(gui.THIN_PAD, 0, gui.THIN_PAD, gui.THIN_PAD))
-    tabsFrame.grid(column=0, row=1, **gui.uniform_padding, sticky='nesw')
+    tabsFrame.grid(column=0, row=2, **gui.uniform_padding, sticky='nesw')
     tabControl = Notebook(tabsFrame)
     runTab = Frame(tabControl, padding=(0, 0))
     settingsTab = Frame(tabControl, padding=(0, 0))
@@ -1008,15 +1010,6 @@ def main() -> None:
         prompt='Post-trigger samples'
     )
     settings['postTrigSamples'] = triggerSettings.variables['postTrigSamples']
-
-    # triggerSettings.add_spinbox(
-    #     id='timebase',
-    #     from_to=(0, 2 ** 32 - 1),
-    #     step=1,
-    #     prompt='Timebase',
-    #     default=params['timebase']
-    # )
-    # settings['timebase'] = triggerSettings.variables['timebase']
 
     triggerSettings.add_spinbox(
         id='thresholdmV',
