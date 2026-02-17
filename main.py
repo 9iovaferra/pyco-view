@@ -1017,7 +1017,9 @@ def main() -> None:
         from_to=(0, 500),
         step=1,
         default=params['preTrigSamples'],
-        prompt='Pre-trigger samples'
+        prompt='Pre-trigger samples',
+        validate='key',
+        validatecommand=(root.register(gui.validate_bins), '%P')
     )
     settings['preTrigSamples'] = triggerSettings.variables['preTrigSamples']
 
@@ -1026,7 +1028,9 @@ def main() -> None:
         from_to=(1, 500),
         step=1,
         default=params['postTrigSamples'],
-        prompt='Post-trigger samples'
+        prompt='Post-trigger samples',
+        validate='key',
+        validatecommand=(root.register(gui.validate_bins), '%P')
     )
     settings['postTrigSamples'] = triggerSettings.variables['postTrigSamples']
 
@@ -1035,7 +1039,9 @@ def main() -> None:
         from_to=(-chInputRanges[params[f"ch{params['target'][0]}range"]], 0),  # will need a better fix for this
         step=1,
         prompt='Threshold (mV)',
-        default=int(params['thresholdmV'])
+        default=int(params['thresholdmV']),
+        validate='key',
+        validatecommand=(root.register(gui.validate_master_delay), '%P')
     )
     settings['thresholdmV'] = triggerSettings.variables['thresholdmV']
 
@@ -1044,7 +1050,9 @@ def main() -> None:
         from_to=(500, 60000),
         step=100,
         prompt='Auto trigger (ms)',
-        default=params['autoTrigms']
+        default=params['autoTrigms'],
+        validate='key',
+        validatecommand=(root.register(gui.validate_bins), '%P')
     )
     settings['autoTrigms'] = triggerSettings.variables['autoTrigms']
 
@@ -1053,7 +1061,9 @@ def main() -> None:
         from_to=(0, 10),
         step=1,
         prompt='Trigger delay (s)',
-        default=params['delaySeconds']
+        default=params['delaySeconds'],
+        validate='key',
+        validatecommand=(root.register(gui.validate_bins), '%P')
     )
     settings['delaySeconds'] = triggerSettings.variables['delaySeconds']
 
@@ -1062,7 +1072,9 @@ def main() -> None:
         from_to=(3, 100),
         step=1,
         prompt='Max. timeouts',
-        default=params['maxTimeouts']
+        default=params['maxTimeouts'],
+        validate='key',
+        validatecommand=(root.register(gui.validate_bins), '%P')
     )
     settings['maxTimeouts'] = triggerSettings.variables['maxTimeouts']
 
