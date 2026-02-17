@@ -57,6 +57,11 @@ def escape(widget: Widget, default: Any) -> None:
 
 # -------------------------- Custom Tkinter wrapper --------------------------
 # TODO: make id checker function for consistency
+GRID_KWARGS = (
+    'column', 'row', 'rowspan', 'columnspan', 'sticky',
+    'padx', 'pady', 'ipadx', 'ipady'
+)
+
 def assert_entry_ok(widget, valid_range: tuple[int, int]) -> None:
     if widget.get().isdigit():
         widget_value = int(widget.get())
@@ -197,8 +202,12 @@ class PVLabelframe(Labelframe):
             padding: Optional[dict[str, int]] = None,
             **kwargs
             ) -> Label:
-        label = Label(self.labelframe if parent is None else parent, text=text)
-        self.__auto_place(label, id=id, sticky=sticky, **kwargs)
+        assert id not in self.children.keys(), \
+            f"The widget ID '{id}' already exists!"
+        grid_kwargs = {k: v for k, v in kwargs.items() if k in GRID_KWARGS}
+        widget_kwargs = {k: v for k, v in kwargs.items() if k not in GRID_KWARGS}
+        label = Label(self.labelframe if parent is None else parent, text=text, **widget_kwargs)
+        self.__auto_place(label, id=id, sticky=sticky, **grid_kwargs)
 
         return label
 
@@ -216,6 +225,8 @@ class PVLabelframe(Labelframe):
             ) -> Spinbox:
         assert id not in self.variables, \
             f"The widget ID '{id}' already exists!"
+        grid_kwargs = {k: v for k, v in kwargs.items() if k in GRID_KWARGS}
+        widget_kwargs = {k: v for k, v in kwargs.items() if k not in GRID_KWARGS}
         self.variables[id] = self.__create_tk_var(from_to, default)
         if prompt:
             self.add_label(
@@ -231,17 +242,17 @@ class PVLabelframe(Labelframe):
             textvariable=self.variables[id],
             width=width,
             increment=step,
-            validate='key',
-            validatecommand=(self.grandparent.register(self.__validate), '%P'),
-            takefocus=0
+            takefocus=0,
+            **widget_kwargs
         )
         spinbox.bind('<FocusOut>', lambda _: self.__assert_entry_ok(spinbox, from_to))
         spinbox.bind('<Escape>', lambda _: self.__escape(id, default))
         self.__auto_place(
             spinbox,
             id=id,
-            padding={'padx': lbf_contents_padding['padx']} if prompt is not None else lbf_contents_padding,
-            sticky=sticky
+            padding={'padx': lbf_contents_padding['padx']} if prompt else lbf_contents_padding,
+            sticky=sticky,
+            **grid_kwargs
         )
 
         return spinbox
@@ -260,6 +271,8 @@ class PVLabelframe(Labelframe):
             ) -> Checkbutton:
         assert id not in self.variables, \
             f"The widget ID '{id}' already exists!"
+        grid_kwargs = {k: v for k, v in kwargs.items() if k in GRID_KWARGS}
+        widget_kwargs = {k: v for k, v in kwargs.items() if k not in GRID_KWARGS}
         self.variables[id] = self.__create_tk_var(on_off, default)
         checkbutton = Checkbutton(
             self.labelframe,
@@ -268,7 +281,8 @@ class PVLabelframe(Labelframe):
             onvalue=on_off[0],
             offvalue=on_off[1],
             style=style,
-            takefocus=0
+            takefocus=0,
+            **widget_kwargs
         )
         if command:
             checkbutton.config(command=command)
@@ -279,7 +293,8 @@ class PVLabelframe(Labelframe):
                 'padx': lbf_contents_padding['padx'],
                 'pady': (0, 0),
             } if padding is None else padding,
-            sticky=sticky
+            sticky=sticky,
+            **grid_kwargs
         )
 
         return checkbutton
@@ -296,6 +311,8 @@ class PVLabelframe(Labelframe):
             ) -> OptionMenu:
         assert id not in self.variables, \
             f"The widget ID '{id}' already exists!"
+        grid_kwargs = {k: v for k, v in kwargs.items() if k in GRID_KWARGS}
+        widget_kwargs = {k: v for k, v in kwargs.items() if k not in GRID_KWARGS}
         self.variables[id] = self.__create_tk_var(options, default)
         if prompt:
             self.add_label(
@@ -307,16 +324,18 @@ class PVLabelframe(Labelframe):
         option_menu = OptionMenu(
             self.labelframe,
             self.variables[id],
-            default if default is not None else options[0],
-            *options
+            default if default else options[0],
+            *options,
+            **widget_kwargs
         )
         self.__auto_place(
             option_menu,
             id=id,
             padding={
                 'padx': lbf_contents_padding['padx'],
-            } if prompt is not None else lbf_contents_padding,
-            sticky=sticky
+            } if prompt else lbf_contents_padding,
+            sticky=sticky,
+            **grid_kwargs
         )
 
         return option_menu
@@ -335,6 +354,8 @@ class PVLabelframe(Labelframe):
             ) -> Combobox:
         assert id not in self.variables, \
             f"The widget ID '{id}' already exists!"
+        grid_kwargs = {k: v for k, v in kwargs.items() if k in GRID_KWARGS}
+        widget_kwargs = {k: v for k, v in kwargs.items() if k not in GRID_KWARGS}
         self.variables[id] = self.__create_tk_var(options, default)
         if prompt:
             self.add_label(
@@ -349,15 +370,17 @@ class PVLabelframe(Labelframe):
             values=options,
             textvariable=self.variables[id],
             takefocus=0,
-            width=width
+            width=width,
+            **widget_kwargs
         )
         combobox.bind('<FocusOut>', lambda _: self.__assert_option_ok(id, options, default))
         combobox.bind('<Escape>', lambda _: self.__escape(id, default))
         self.__auto_place(
             combobox,
             id=id,
-            padding={'padx': lbf_contents_padding['padx']} if prompt is not None else lbf_contents_padding,
-            sticky=sticky
+            padding={'padx': lbf_contents_padding['padx']} if prompt else lbf_contents_padding,
+            sticky=sticky,
+            **grid_kwargs
         )
 
         return combobox
