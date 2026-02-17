@@ -99,8 +99,8 @@ class PVLabelframe(Labelframe):
             row: int,
             size: tuple[int, int],
             sticky: Optional[str] = 'nw',  # Same format as in tkinter
-            cspan: Optional[int] = None,
-            rspan: Optional[int] = None,
+            cspan: Optional[int] = 0,
+            rspan: Optional[int] = 0,
             padding: Optional[dict[str, int]] = None
             ):
         assert isinstance(sticky, str) and all([c in 'nesw' for c in sticky]), \
@@ -391,7 +391,7 @@ class PVLabelframe(Labelframe):
             members: list[str],
             name: Optional[str] = None,
             layout: Optional[str] = 'compact',  # Or 'relaxed'
-            cspan: Optional[int] = None,
+            cspan: Optional[int] = 0,
             padding: Optional[dict[str, int]] = lbf_contents_padding,
             sticky: Optional[str] = None,
             ) -> None:
@@ -400,7 +400,7 @@ class PVLabelframe(Labelframe):
         n_members = len(members)
         assert n_members > 1, \
             "Can't make a group with just one member."
-        assert cspan is not None and cspan < n_members, \
+        assert cspan >= 0 and cspan < n_members, \
             f'Column span {cspan}, >=0 and <={n_members} expected.'
 
         if name:
@@ -422,7 +422,7 @@ class PVLabelframe(Labelframe):
             if first_member_col == 0:
                 self.children[group_name_id][1]['padx'] = (THIN_PAD, 0)
 
-        columnspan = (self.auto_pos_y + 1 + n_members) // self.maxrow + 1 if cspan is None else cspan
+        columnspan = (self.auto_pos_y + 1 + n_members) // self.maxrow + 1 if cspan == 0 else cspan
         if columnspan > 1:  # Set columnspan for all widgets in the same column as the group
             self.maxcol += 1
             self.auto_pos_y -= 1
