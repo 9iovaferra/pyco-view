@@ -134,11 +134,11 @@ class App(tk.Tk):
         about.title('About')
         title = Label(about, text='PycoView', font=18, anchor='center')
         title.pack(expand=1, fill='x')
-        app_version = Label(about, text='v0.1', anchor='center')
+        app_version = Label(about, text='v2.0', anchor='center')
         app_version.pack(expand=1, fill='x')
         link = Label(about, text='Github Repository', foreground='blue', cursor='hand2', anchor='center')
         link.pack(expand=1, fill='x')
-        link.bind('<Button-1>', lambda _: open_new('https://github.com/9iovaferra/pyco-view'))
+        link.bind('<Button-1>', lambda _: open_new('https://github.com/9iovaferra/PycoView'))
         self.center(target=about)
 
     def delete_window(self) -> None:
