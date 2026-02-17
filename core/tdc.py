@@ -444,7 +444,7 @@ class TDC:
         self.status['stop'] = ps.psospaStop(self.chandle)
         err = self.__check_health(self.status['stop'])
         ps.psospaCloseUnit(self.chandle)
-        if err is not None:
+        if err:
             if self.params['log'] and not self.probe:
                 log(self.loghandle, f'==> Job finished with error: {err}', time=True)
             return err

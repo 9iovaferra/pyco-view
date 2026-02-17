@@ -1,14 +1,15 @@
-from ctypes import c_int16, c_int32, c_uint32, c_double, Array, byref
-import numpy as np
+# Copyright (C) 2024 Pico Technology Ltd. See LICENSE file for terms.
 from picosdk.psospa import psospa as ps
 from picosdk.constants import PICO_STATUS, PICO_STATUS_LOOKUP
+from picosdk.functions import adc2mVV2, mV2adcV2
 from picosdk.PicoDeviceEnums import picoEnum as enums
+from pycoviewlib.constants import PV_DIR, chInputRanges, couplings, pCouplings, channelIDs
 from pycoviewlib.functions import (
     detect_gate_open_closed, calculate_charge, log, key_from_value, format_data
 )
-from pycoviewlib.constants import PV_DIR, chInputRanges, couplings, pCouplings, channelIDs
+from ctypes import c_int16, c_int32, c_uint32, c_double, Array, byref
+import numpy as np
 import matplotlib.pyplot as plt
-from picosdk.functions import adc2mVV2, mV2adcV2
 from datetime import datetime
 from typing import Optional, Union
 from itertools import islice
@@ -85,7 +86,8 @@ class ADC:
         self.probe = probe
         self.timestamp: str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
         if not self.probe:
-            self.datahandle: str = f"{PV_DIR}/Data/{params['filename']}_{self.timestamp}_data.{params['dformat']}"
+            self.datahandle: str = (f"{PV_DIR}/Data/{self.params['filename']}"
+                                    f"_{self.timestamp}_data.{self.params['dformat']}")
             if self.params['log']:  # Creating loghandle if required
                 self.loghandle: str = f"{params['filename']}_{self.timestamp}_adc_log.txt"
 
@@ -104,7 +106,7 @@ class ADC:
         ][0]
 
         self.gateChRangeMax = chInputRanges[params[f'ch{channelIDs[self.channelGate]}range']] * 1000000
-        self.sigChRangeMax = chInputRanges[params[f"ch{channelIDs[self.channelSignal]}range"]] * 1000000
+        self.sigChRangeMax = chInputRanges[params[f'ch{channelIDs[self.channelSignal]}range']] * 1000000
         self.gateAnalogOffset = params[f'ch{channelIDs[self.channelGate]}analogOffset'] * 1000
         self.sigAnalogOffset = params[f'ch{channelIDs[self.channelSignal]}analogOffset'] * 1000
         self.autoTrigms = params['autoTrigms']
@@ -388,7 +390,7 @@ class ADC:
         self.status['stop'] = ps.psospaStop(self.chandle)
         err = self.__check_health(self.status['stop'])
         ps.psospaCloseUnit(self.chandle)
-        if err is not None:
+        if err:
             if self.params['log'] and not self.probe:
                 log(self.loghandle, f'==> Job finished with error: {err}', time=True)
             return err

@@ -68,6 +68,6 @@ class TriggerDirection(Structure):
     _layout_ = 'gcc-sysv'
     _fields_ = [
         ('channel', c_int32),
-        ('direction', c_int32)
-        ('thresholdMode', c_uint16)
+        ('direction', c_int32),
+        ('thresholdMode', c_uint16),
     ]

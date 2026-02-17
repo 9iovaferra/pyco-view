@@ -4,7 +4,7 @@ from tkinter.ttk import (
 )
 from pycoviewlib.functions import _isfloat
 from typing import Union, Any, Optional, Callable
-from re import search, findall
+from re import search
 
 """ Padding presets (frame padding: 'left top right bottom') """
 THIN_PAD = 6
@@ -44,9 +44,8 @@ def validate_bins(entry: str) -> bool:
 def validate_master_delay(entry: str) -> bool:
     valid: bool = any([
         entry == '',
-        # len(findall('-', entry)) == 1,
         entry == '-',
-        search(r'^-?\d{1,3}$', entry) is not None
+        search(r'^-?\d{1,5}$', entry) is not None
     ]) and search('[a-zA-Z]', entry) is None
     return valid
 
@@ -111,19 +110,19 @@ class PVLabelframe(Labelframe):
         self.maxrow = size[1]
         self.variables: dict[str, tkAnyVar] = {}  # Container for tk variables
         grid_kwargs = {'column': col, 'row': row, 'sticky': sticky}
-        if cspan is not None:
+        if cspan:
             grid_kwargs['columnspan'] = cspan
-        if rspan is not None:
+        if rspan:
             grid_kwargs['rowspan'] = rspan
-        grid_kwargs.update(padding if padding is not None else lbf_asym_padding)
+        grid_kwargs.update(padding if padding else lbf_asym_padding)
         self.labelframe.grid(**grid_kwargs)
 
     def __auto_place(
             self,
             widget,
             id: str,
-            padding: dict[str, int] = None,
-            sticky: str = None,
+            padding: Optional[dict[str, int]] = None,
+            sticky: Optional[str] = None,
             **kwargs
             ) -> None:
         assert self.auto_pos_x <= self.maxcol, \
@@ -135,7 +134,7 @@ class PVLabelframe(Labelframe):
             'padx': (0, 0),
             'pady': (0, 0)
         }
-        grid_kwargs.update(padding if padding is not None else lbf_contents_padding)
+        grid_kwargs.update(padding if padding else lbf_contents_padding)
         grid_kwargs.update(kwargs)
         if self.auto_pos_x > 0:  # Spacing between columns
             grid_kwargs['padx'] = (  # Checkbuttons have wider left padding by default
@@ -193,7 +192,7 @@ class PVLabelframe(Labelframe):
             self,
             id: str,
             text: str,
-            parent: Notebook | Frame = None,  # Optional parent frame for group
+            parent: Optional[Notebook | Frame] = None,  # Optional parent frame for group
             sticky: Optional[str] = None,
             padding: Optional[dict[str, int]] = None,
             **kwargs
@@ -208,20 +207,21 @@ class PVLabelframe(Labelframe):
             id: str,
             from_to: tuple[int | float, int | float],
             step: int | float,
-            prompt: str = None,
-            default: Any = None,
-            width: int = 9,
-            padding: dict[str, int] = None,
-            sticky: str = None
+            prompt: Optional[str] = None,
+            default: Optional[Any] = None,
+            width: Optional[int] = 9,
+            padding: Optional[dict[str, int]] = None,
+            sticky: Optional[str] = None,
+            **kwargs
             ) -> Spinbox:
         assert id not in self.variables, \
             f"The widget ID '{id}' already exists!"
         self.variables[id] = self.__create_tk_var(from_to, default)
-        if prompt is not None:
+        if prompt:
             self.add_label(
                 id=f'{id}.label',
                 text=prompt,
-                padding=padding if padding is not None else lbf_contents_padding,
+                padding=padding if padding else lbf_contents_padding,
                 sticky=sticky
             )
         spinbox = Spinbox(
@@ -251,11 +251,12 @@ class PVLabelframe(Labelframe):
             id: str,
             prompt: str,
             on_off: tuple[Any],
-            default: Any = None,
-            command: Callable = None,
-            style: str = 'TCheckbutton',
-            padding: dict[str, int] = None,
-            sticky: str = None
+            default: Optional[Any] = None,
+            command: Optional[Callable] = None,
+            style: Optional[str] = 'TCheckbutton',
+            padding: Optional[dict[str, int]] = None,
+            sticky: Optional[str] = None,
+            **kwargs
             ) -> Checkbutton:
         assert id not in self.variables, \
             f"The widget ID '{id}' already exists!"
@@ -269,7 +270,7 @@ class PVLabelframe(Labelframe):
             style=style,
             takefocus=0
         )
-        if command is not None:
+        if command:
             checkbutton.config(command=command)
         self.__auto_place(
             checkbutton,
@@ -287,19 +288,20 @@ class PVLabelframe(Labelframe):
             self,
             id: str,
             options: list[Any],
-            default: Any = None,
-            prompt: str = None,
-            padding: dict[str, int] = None,
-            sticky: str = None
+            default: Optional[Any] = None,
+            prompt: Optional[str] = None,
+            padding: Optional[dict[str, int]] = None,
+            sticky: Optional[str] = None,
+            **kwargs
             ) -> OptionMenu:
         assert id not in self.variables, \
             f"The widget ID '{id}' already exists!"
         self.variables[id] = self.__create_tk_var(options, default)
-        if prompt is not None:
+        if prompt:
             self.add_label(
                 id=f'{id}.label',
                 text=prompt,
-                padding=padding if padding is not None else lbf_contents_padding,
+                padding=padding if padding else lbf_contents_padding,
                 sticky=sticky
             )
         option_menu = OptionMenu(
@@ -323,21 +325,22 @@ class PVLabelframe(Labelframe):
             self,
             id: str,
             options: list[Any],
-            default: Any = None,
-            state: str = 'readonly',
-            prompt: str = None,
-            width: int = 9,
-            padding: dict[str, int] = None,
-            sticky: str = None
+            default: Optional[Any] = None,
+            state: Optional[str] = 'readonly',
+            prompt: Optional[str] = None,
+            width: Optional[int] = 9,
+            padding: Optional[dict[str, int]] = None,
+            sticky: Optional[str] = None,
+            **kwargs
             ) -> Combobox:
         assert id not in self.variables, \
             f"The widget ID '{id}' already exists!"
         self.variables[id] = self.__create_tk_var(options, default)
-        if prompt is not None:
+        if prompt:
             self.add_label(
                 id=f'{id}.label',
                 text=prompt,
-                padding=padding if padding is not None else lbf_contents_padding,
+                padding=padding if padding else lbf_contents_padding,
                 sticky=sticky
             )
         combobox = Combobox(
@@ -363,11 +366,11 @@ class PVLabelframe(Labelframe):
             self,
             id: str,
             members: list[str],
-            name: str = None,
-            layout: str = 'compact',  # Or 'relaxed'
-            cspan: int = None,
-            padding: dict[str, int] = lbf_contents_padding,
-            sticky: str = None
+            name: Optional[str] = None,
+            layout: Optional[str] = 'compact',  # Or 'relaxed'
+            cspan: Optional[int] = None,
+            padding: Optional[dict[str, int]] = lbf_contents_padding,
+            sticky: Optional[str] = None,
             ) -> None:
         assert all([id in self.variables for id in members]), \
             "One or more members don't exist!"
@@ -377,12 +380,11 @@ class PVLabelframe(Labelframe):
         assert cspan is not None and cspan < n_members, \
             f'Column span {cspan}, >=0 and <={n_members} expected.'
 
-        if name is not None:
+        if name:
             group_name_id = f'{id}.label'
             self.add_label(
                 id=group_name_id,
                 text=name,
-                # padding=padding if padding is not None else lbf_contents_padding,
                 padding=padding,
                 sticky=sticky
             )
