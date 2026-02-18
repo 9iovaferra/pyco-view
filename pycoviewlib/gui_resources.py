@@ -5,6 +5,7 @@ from tkinter.ttk import (
 from pycoviewlib.functions import _isfloat
 from typing import Union, Any, Optional, Callable
 from re import search
+from math import log10
 
 """ Padding presets (frame padding: 'left top right bottom') """
 THIN_PAD = 6
@@ -31,6 +32,57 @@ lbf_contents_padding = {'padx': (THIN_PAD, 0), 'pady': (MED_PAD, 2)}
 """ Colors """
 CH_COLORS = {'blue': '#007dff', 'red': 'red', 'green': '#66BB6A', 'gold': 'gold'}
 HIST_COLOR = 'tab:blue'
+
+# Idle							                        0
+# Error!							                    10
+# No process to stop.					                14
+# Too many timeouts. Please check your setup.	        15
+# Probing PicoScope...					                20
+# Probing PicoScope... (trigger timeout {n})	        25{n}
+# Starting {mode}...					                30{mode_idx}
+# Capture #{count}... skipping (trigger timeout {n})	36{count}5{n}
+# Capture #{count}					                    36{count}
+# Stopping...						                    40
+#
+# legend:
+# 1. = error code
+# 2. = probe-related status
+# 3. = data collection status
+# 4. = stopping
+# .5 = timeout
+# .6 = capture count
+status = {
+    'error': {
+        0: 'Error!',
+        4: 'No process to stop.',
+        5: 'Too many timeouts. Please check your setup.',
+    },
+    'mode': ['adc', 'tdc', 'mntm'],
+}
+def status_lookup(code: int) -> str:
+    if code == 0:
+        return 'Idle'
+
+    code_str = str(code)
+    # kind = code // (10 ** int(log10(code)))  # Get first digit
+    # subtype = code - kind * (10 ** int(log10(code)))  # Get first digit
+    kind = int(code_str[0])
+    subtype = int(code_str[1])
+    match kind:
+        case 1:  # Error
+            return status['error'][subtype]
+        case 2:  # Probe-related
+            if subtype == 0:
+                return 'Probing PicoScope...'
+            elif subtype == 5:
+                return f'Probing PicoScope... (trigger timeout {code_str[2:]})'
+        case 3:  # Data-collection-related
+            if subtype == 0:
+                return f"Starting {status['mode'][code_str[2:]]}..."
+            elif subtype == 6:
+                return f'Capture #{code_str[2:]}'
+        case 4:
+            return 'Stopping...'
 
 # ------------------------- Entry validation helpers -------------------------
 def validate_filename(entry: str) -> bool:
