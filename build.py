@@ -1,0 +1,34 @@
+import PyInstaller.__main__ as pyi
+from shutil import rmtree
+from pycoviewlib.constants import PV_DIR
+from zipfile import ZipFile, ZIP_DEFLATED
+
+
+print('Building PycoView with `pyinstaller`. This might take a minute...')
+pyi.run([
+	'main.py',
+	'--onefile',
+	'--clean',
+	'--hidden-import=PIL._tkinter_finder',
+	'--name=PycoView',
+	'--noconsole',
+	'--distpath=./',
+	'--specpath=./build',
+	'--upx-dir=~/Documents/upx-5.0.1-arm64_linux/upx',
+	f'--splash={PV_DIR}/splash.jpg',
+	'--log-level=WARN'
+	])
+
+print('Creating archive for distribution...')
+zf = ZipFile('PycoView_v2.0.zip', mode='w', compression=ZIP_DEFLATED, compresslevel=9)
+zf.write('PycoView', arcname='PycoView/PycoView')
+zf.write('pycoview.png', arcname='PycoView/pycoview.png')
+zf.write('backup/config.ini.bak', arcname='PycoView/backup/config.ini.bak')
+zf.write('install.sh')
+zf.testzip()
+zf.close()
+
+print('Cleaning up...')
+rmtree('build/')
+
+print('Done! Run `install.sh` to complete installation.')
