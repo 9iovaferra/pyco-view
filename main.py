@@ -518,7 +518,8 @@ def probe_pico(root: tk.Tk, mode: str, max_timeouts: int) -> None:
 def apply_changes(
         apply_btn: Button,
         ui_ch_labels: dict[str, Label],
-        preset: Optional[dict[str, Union[str, int, float]]] = None
+        preset: Optional[dict[str, Union[str, int, float]]] = None,
+        hook: Optional[dict[str, ChannelSettings | tk.Variable]] = None
         ) -> None:
     """ Compares `settings` against `params`,
     sends updated values to `update_setting()` """
@@ -528,7 +529,12 @@ def apply_changes(
 
     if preset:  # TODO: find a cleaner solution
         for key, value in preset.items():
-            if 'range' in key:
+            if 'enabled' in key:
+                ch = key.strip('chenabled')
+                settings[key].set(value)
+                hook[ch].toggle_channel_state(preset[key])
+                hook[key].set(ch if ch in preset['target'] else '')
+            elif 'range' in key:
                 settings[key].set(chInputRanges[value])
             elif 'coupling' in key:
                 settings[key].set(key_from_value(couplings, value))
@@ -976,7 +982,6 @@ def main() -> None:
 
     """ Status textbox """
     status_frame = Frame(runTab)
-    # statusFrame.grid(column=0, row=2, columnspan=3, padx=(gui.WIDE_PAD, 0), pady=(gui.WIDE_PAD, 0), sticky='nesw')
     status_frame.grid(column=0, row=1, padx=gui.WIDE_PAD, pady=0, sticky='nesw')
     Label(status_frame, text='Status:', anchor='nw').grid(column=0, row=0)
     Label(status_frame, textvariable=PV_STATUS, anchor='nw').grid(column=1, row=0)
@@ -1154,7 +1159,8 @@ def main() -> None:
             apply_changes(
                 applySettingsBtn,
                 uiChLabels,
-                preset=parse_config(f'presets/{modes[modeVar.get()]}.ini')
+                preset=parse_config(f'presets/{modes[modeVar.get()]}.ini'),
+                hook=(chSettings | {k: v for k, v in triggerSettings.variables.items() if 'enabled' in k})
             )
         ]
     )
