@@ -27,7 +27,6 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from threading import Thread, Event
 from queue import Queue
 from os import system
-# from datetime import datetime
 from pathlib import Path
 from typing import Union, Optional
 from webbrowser import open_new
@@ -37,10 +36,9 @@ class App(tk.Tk):
     def __init__(self, *args, **kwargs):
         tk.Tk.__init__(self, *args, **kwargs)
         self.resizable(0, 0)
-        self.after(0, self.hide())
         self.title('PycoView')
-        dockIcon = tk.PhotoImage(file='pycoview.png')
-        self.wm_iconphoto(False, dockIcon)
+        self.dock_icon = tk.PhotoImage(file='pycoview.png')
+        self.wm_iconphoto(False, self.dock_icon)
         self.protocol('WM_DELETE_WINDOW', self.delete_window)
 
         self.menu_bar = tk.Menu(
@@ -61,12 +59,6 @@ class App(tk.Tk):
         self.menu_bar.add_cascade(menu=self.help_menu, label='Help')
         self.help_menu.add_command(label='About', command=self.open_about_window)
 
-    def hide(self, target=None) -> None:
-        """ Hide window until widgets are drawn to avoid visual glitch """
-        if target is None:
-            target = self
-        self.attributes('-alpha', 0.0)
-
     def center(self, target=None) -> None:
         if target is None:
             target = self
@@ -80,7 +72,6 @@ class App(tk.Tk):
         x = (screen_w - target_w) // 2
         y = (screen_h - target_h) // 2
         target.geometry(f'+{x}+{y}')
-        target.attributes('-alpha', 1.0)
 
     def show_data_folder(self) -> None:
         datapath = Path(f'{PV_DIR}/Data')
@@ -94,8 +85,8 @@ class App(tk.Tk):
             ) -> None:
         info_win = tk.Toplevel()
         info_win.resizable(0, 0)
-        info_win.after(0, self.hide())
         info_win.title(title)
+        info_win.wm_iconphoto(False, self.dock_icon)
         frame = Frame(info_win, padding=(gui.WIDE_PAD, gui.WIDE_PAD, gui.WIDE_PAD, gui.WIDE_PAD))
         frame.grid(row=0, column=0, sticky='nesw')
         Label(
@@ -115,9 +106,8 @@ class App(tk.Tk):
         buttons_frame.grid(row=3, column=0, columnspan=2, sticky='nse')
         help_button = Button(
             buttons_frame, text='Help', width=7,
-            command=lambda: open_new(
-                'https://www.picotech.com/download/manuals/picoscope-3000e-series-psospa-programmers-guide.pdf'
-            )
+            command=lambda: open_new(('https://www.picotech.com/download/manuals/'
+                                      'picoscope-3000e-series-psospa-programmers-guide.pdf'))
         )
         close_button = Button(
             buttons_frame, text='Close', width=7,
@@ -236,7 +226,8 @@ class Histogram():
             mode: Optional[str] = '',
             ):
         self.parent: Labelframe = parent
-        self.root: tk.Tk = None
+        self.root: tk.Tk = self.parent.winfo_toplevel()
+        self.hook: list[Widget] = []
         self.probe: bool = False
         self.mode: str = mode
         self.buffer: list[float] = []
@@ -318,13 +309,14 @@ class Histogram():
         )
         self.fig.savefig(figureSavePath)
 
-    def start(self, root: tk.Tk, max_timeouts: int):
+    def start(self, max_timeouts: int, hook: list[Widget]):
+        # root: tk.Tk?
         """
         Creates follower thread, attempts to setup communication with PicoScope,
         exits if unsuccessful, starts thread otherwise
         """
         PV_STATUS.set(f'Starting {key_from_value(modes, self.mode)}...')
-        self.root = root
+        # self.root = root
         self.root.update_idletasks()
         self.cleanup()  # Scrape canvas & buffer if restarting
         self.follower = Thread(target=self.follow, args=[max_timeouts])
@@ -654,14 +646,6 @@ def main() -> None:
     global params  # dict[str, Union[int, float, str]]
     params = parse_config()
     backup_config()
-
-    # TODO: Allow user to choose `Data` folder path
-    try:
-        pv_data_folder: Path = Path(f'{PV_DIR}/Data').expanduser()
-        pv_data_folder.mkdir(exist_ok=True)
-    except PermissionError:
-        PV_STATUS.set('Error!')
-        root.info_window(info=[f'Cannot write to {pv_data_folder}!'])
 
     global settings  # Stores Tkinter variables linked to widgets
     settings = {
