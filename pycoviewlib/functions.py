@@ -1,33 +1,31 @@
 """ Copyright (C) 2019 Pico Technology Ltd. """
-from pycoviewlib.constants import maxADC, PV_DIR
+from pycoviewlib.constants import maxADC, PV_DIR, DATA_DIR
 from dataclasses import dataclass
 from ctypes import c_int16, Array
 import numpy as np
 from datetime import datetime as dt
 from time import perf_counter
 from os import listdir
-from typing import Union
+from typing import Optional, Union
 from pathlib import Path
 
 
 def mV2adc(thresh: float, offset: float, range_: int) -> int:
-    """ Convert millivolts to ADC counts """
-    adcCounts = int((thresh + offset * 1000) / range_ * maxADC)
-
-    return adcCounts
+    """ [DEPRECATED] Convert millivolts to ADC counts """
+    return int((thresh + offset * 1000) / range_ * maxADC)
 
 
-def parse_config() -> dict:
-    """ Parser for .ini file """
+def parse_config(config: Optional[str] = 'config.ini') -> dict:
+    """ Parser for .ini files """
     # TODO: safety checks on data types?
-    params = {}
-    if 'config.ini' not in listdir(PV_DIR):
+    params: dict[str, Union[int, str, float, list[str], list[int]]] = {}
+    if config == 'config.ini' and config not in listdir(PV_DIR):
         with open(f'{PV_DIR}/backup/config.ini.bak', 'r') as ini:
             lines = ini.readlines()
         with open(f'{PV_DIR}/config.ini', 'w') as ini:
             ini.writelines(lines)
 
-    with open('config.ini', 'r') as ini:
+    with open(config, 'r') as ini:
         for line in ini:
             if '[' in line or line == '\n':
                 continue
@@ -40,7 +38,8 @@ def parse_config() -> dict:
                 params[p[0]] = p[1]
             else:
                 params[p[0]] = list(int(v) for v in p[1].split(','))
-    params['maxSamples'] = params['preTrigSamples'] + params['postTrigSamples']
+    if config == 'config.ini':
+        params['maxSamples'] = params['preTrigSamples'] + params['postTrigSamples']
 
     return params
 
@@ -143,7 +142,7 @@ def format_data(data: list[str | int | float], filetype: str) -> str:
 
 def log(loghandle: str, entry: str, time=False) -> None:
     """ Write to log file """
-    with open(f'{PV_DIR}/Data/{loghandle}', 'a') as logfile:
+    with open(f'{DATA_DIR}/Data/{loghandle}', 'a') as logfile:
         if time:
             logfile.write(f"[{dt.now().strftime('%H:%M:%S')}] {entry}\n")
         else:

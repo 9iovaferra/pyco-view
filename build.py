@@ -20,9 +20,10 @@ pyi.run([
 	])
 
 print('Creating archive for distribution...')
-zf = ZipFile('PycoView_v0.1.zip', mode='w', compression=ZIP_DEFLATED, compresslevel=9)
+zf = ZipFile('PycoView.zip', mode='w', compression=ZIP_DEFLATED, compresslevel=9)
 zf.write('PycoView', arcname='PycoView/PycoView')
 zf.write('pycoview.png', arcname='PycoView/pycoview.png')
+zf.write('logo.png', arcname='PycoView/logo.png')
 zf.write('backup/config.ini.bak', arcname='PycoView/backup/config.ini.bak')
 zf.write('install.sh')
 zf.testzip()

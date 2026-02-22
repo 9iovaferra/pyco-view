@@ -1,5 +1,6 @@
-from tkinter import *
-from tkinter.ttk import *
+# from tkinter import *
+import tkinter as tk
+# from tkinter.ttk import *
 
 from typing import TypedDict, List, Callable, Optional, Union
 
@@ -8,7 +9,7 @@ class Bar(TypedDict):
     Pos: float
     Value: float
 
-class Slider(Frame):
+class Slider(tk.Frame):
     # LINE_COLOR = "#476b6b"
     LINE_COLOR = "#0064CC"
     LINE_WIDTH = 3
@@ -16,9 +17,8 @@ class Slider(Frame):
     BAR_COLOR_INNER = "#007dff"
     # BAR_COLOR_OUTTER = "#c2d6d6"
     BAR_COLOR_OUTTER = "#B3D9FF"
-    BAR_RADIUS = 10
-    BAR_RADIUS_INNER = BAR_RADIUS - 5
-    # 9iovaferra: labels only use int values in GUI
+    BAR_RADIUS = 12
+    BAR_RADIUS_INNER = BAR_RADIUS / 2
     DIGIT_PRECISION = ".0f"  # for showing in the canvas
 
     # relative step size in 0 to 1, set to 0 for no step size restiction
@@ -45,7 +45,7 @@ class Slider(Frame):
         assert step_size <= max_val - min_val, "step size must be smaller than range"
         assert min_val < max_val, "min value must be smaller than max value"
 
-        Frame.__init__(self, master, height=height, width=width)
+        tk.Frame.__init__(self, master, height=height, width=width)
         self.master = master
         if init_lis is None:
             init_lis = [min_val]
@@ -55,16 +55,16 @@ class Slider(Frame):
         self.step_size_frac = step_size / float(max_val - min_val)  # step size fraction
 
         self.show_value = show_value
+        self.slider_x = Slider.BAR_RADIUS + 4  # x pos of the slider (left side)
         self.H = height
         self.W = width
         self.canv_H = self.H
         self.canv_W = self.W
         if not show_value:
-            self.slider_y = self.canv_H / 2  # y pos of the slider
+            self.slider_y = self.canv_H / 2 - 2  # y pos of the slider
         else:
-            self.slider_y = self.canv_H * 2 / 5
-        # 9iovaferra: added 8 to left pos to account for value label width
-        self.slider_x = Slider.BAR_RADIUS + 8  # x pos of the slider (left side)
+            self.slider_y = self.canv_H * 2 / 5 - 2
+        # added 4 to left pos to account for value label width
 
         self._val_change_callback = lambda lis: None
 
@@ -73,11 +73,21 @@ class Slider(Frame):
         for value in self.init_lis:
             pos = (value - min_val) / (max_val - min_val)
             ids = []
-            bar: Bar = {"Pos": pos, "Ids": ids, "Value": value}
+            variable = tk.DoubleVar(value=value)
+            bar: Bar = {
+                "Pos": pos,
+                "Ids": ids,
+                "Value": value,
+                'tkVar': variable  # added tk variable to link with ui
+            }
             self.bars.append(bar)
 
-        self.canv = Canvas(self, height=self.canv_H, width=self.canv_W)
-        self.canv.pack()
+        self.canv = tk.Canvas(
+            self,
+            height=self.canv_H,
+            width=self.canv_W - 2 * Slider.BAR_RADIUS
+        )
+        self.canv.pack(expand=True, fill=tk.X)
         self.canv.bind("<Motion>", self._mouseMotion)
         self.canv.bind("<B1-Motion>", self._moveBar)
         if removable:
@@ -86,7 +96,10 @@ class Slider(Frame):
             self.canv.bind("<ButtonRelease-1>", self._addBar)
 
         self.__addTrack(
-            self.slider_x, self.slider_y, self.canv_W - self.slider_x, self.slider_y
+            self.slider_x - self.BAR_RADIUS + 1,
+            self.slider_y,
+            self.canv_W - 4,
+            self.slider_y
         )
         for bar in self.bars:
             bar["Ids"] = self.__addBar(bar["Pos"])
@@ -144,8 +157,7 @@ class Slider(Frame):
             bar = {
                 "Pos": pos,
                 "Ids": ids,
-                "Value": self.__calcPos(x) * (self.max_val - self.min_val)
-                + self.min_val,
+                "Value": self.__calcPos(x) * (self.max_val - self.min_val) + self.min_val,
             }
             self.bars.append(bar)
 
@@ -188,7 +200,7 @@ class Slider(Frame):
             y_value = y + Slider.BAR_RADIUS + 8
             value = pos * (self.max_val - self.min_val) + self.min_val
             id_value = self.canv.create_text(
-                x, y_value, text=format(value, Slider.DIGIT_PRECISION)
+                x, y_value, text=format(value, Slider.DIGIT_PRECISION), font='SegoeUi 10'
             )
             return [id_outer, id_inner, id_value]
         else:
@@ -200,10 +212,12 @@ class Slider(Frame):
             self.canv.delete(id)
         self.bars[idx]["Ids"] = self.__addBar(pos)
         self.bars[idx]["Pos"] = pos
-        # 9iovaferra: rounded value to unit because truncating to DIGIT_PRECISION=.0f
+        # rounded value to unit because truncating to DIGIT_PRECISION=.0f
         # would sometimes cause disparity between value on label and actual returned
         # value from bar position [e.g. -45(label) -> -44(value)]
         self.bars[idx]["Value"] = round(pos * (self.max_val - self.min_val) + self.min_val, 0)
+        # added tk variable to link with ui
+        self.bars[idx]['tkVar'].set(self.bars[idx]['Value'])
         self._val_change_callback(self.get())
 
     def __calcPos(self, x):
