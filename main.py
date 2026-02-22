@@ -12,6 +12,7 @@ try:
     from pyi_splash import close as pyi_splash_close  # Close splash screen when app has loaded
 except ModuleNotFoundError:
     pass
+from PIL import ImageTk, Image
 from pycoviewlib.functions import parse_config, backup_config, key_from_value, get_timeinterval
 from pycoviewlib.constants import (
     PV_DIR, channelIDs, dataFileTypes, modes, couplings, bandwidths, chInputRanges
@@ -128,16 +129,25 @@ class App(tk.Tk):
 
     def open_about_window(self) -> None:
         about = tk.Toplevel()
-        about.geometry('250x180')
+        about.geometry('250x200')
         about.resizable(0, 0)
-        about.after(0, self.hide())
         about.title('About')
-        title = Label(about, text='PycoView', font=18, anchor='center')
-        title.pack(expand=1, fill='x')
+        about.wm_iconphoto(False, self.dock_icon)
+        title = Label(about, text='PycoView', font=('Segoe Ui Bold', 16), anchor='center')
+        title.pack(expand=1, fill='x', pady=(gui.THIN_PAD, 0))
+        pycoview_logo = Image.open(f'{PV_DIR}/logo.png')
+        RESIZE_FACTOR = 5
+        LOGO_W, LOGO_H = pycoview_logo.size
+        logo_img = ImageTk.PhotoImage(
+            pycoview_logo.resize((int(LOGO_W / RESIZE_FACTOR), int(LOGO_H // RESIZE_FACTOR)))
+        )
+        logo = Label(about, image=logo_img, anchor='center')
+        logo.image = logo_img
+        logo.pack(expand=1, fill='both', pady=gui.THIN_PAD)
         app_version = Label(about, text='v2.0', anchor='center')
-        app_version.pack(expand=1, fill='x')
+        app_version.pack()
         link = Label(about, text='Github Repository', foreground='blue', cursor='hand2', anchor='center')
-        link.pack(expand=1, fill='x')
+        link.pack(pady=(0, gui.THIN_PAD))
         link.bind('<Button-1>', lambda _: open_new('https://github.com/9iovaferra/PycoView'))
         self.center(target=about)
 
