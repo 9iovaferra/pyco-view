@@ -315,6 +315,7 @@ class Histogram():
         Creates follower thread, attempts to setup communication with PicoScope,
         exits if unsuccessful, starts thread otherwise
         """
+        self.hook = hook
         PV_STATUS.set(f'Starting {key_from_value(modes, self.mode)}...')
         # self.root = root
         self.root.update_idletasks()
@@ -333,9 +334,12 @@ class Histogram():
         if not all([e is None for e in err]):
             self.root.info_window(info=list(dict.fromkeys(err)))
             PV_STATUS.set('Error!')
+            self.follower = None
             return
         self.stop_event.clear()
         self.follower.start()
+        # Turn off `Start`, `Probe` and `Log acquisition` during run
+        _ = [widget.state(['disabled']) for widget in self.hook]
         self.root.protocol('WM_DELETE_WINDOW', self.kill)
 
     def follow(self, max_timeouts: int) -> None:
@@ -351,6 +355,7 @@ class Histogram():
             if self.timeout == 0:
                 PV_STATUS.set('Too many timeouts, please check your setup.')
                 self.stop_event.set()
+                _ = [widget.state(['normal']) for widget in self.hook]
                 err = self.applet.stop()
                 if err:
                     self.root.info_window(info=[err])
@@ -361,6 +366,7 @@ class Histogram():
                 self.root.info_window(info=list(dict.fromkeys(err)))
                 PV_STATUS.set('Error!')
                 self.stop_event.set()
+                _ = [widget.state(['normal']) for widget in self.hook]
                 continue
             elif data is None:
                 PV_STATUS.set(
@@ -427,11 +433,14 @@ class Histogram():
         PV_STATUS.set('Stopping...')
         self.root.update_idletasks()
         self.stop_event.set()
+        err = self.applet.stop()
+        if err:
+            self.root.info_window(info=[err])
+            PV_STATUS.set('Error!')
         if self.follower is not None:
             self.follower.join(timeout=0.1)
             self.follower = None
-        err = self.applet.stop()
-        PV_STATUS.set('Idle' if err is None and self.timeout != 0 else f'(!) {err}')
+        _ = [widget.state(['normal']) for widget in self.hook]
 
     def kill(self) -> None:
         self.stop()
@@ -947,9 +956,24 @@ def main() -> None:
         )
 
     """ Start/Stop job buttons """
+    probeButton = Button(
+        summary_frame, text='PROBE',
+        command=lambda: probe_pico(
+            root=root, mode=modes[modeVar.get()], max_timeouts=params['maxTimeouts']
+        )
+    )
+    probeButton.grid(
+        column=2, row=1,
+        padx=(gui.WIDE_PAD, 0), pady=(gui.MED_PAD, 0), ipadx=gui.THIN_PAD, ipady=gui.THIN_PAD,
+        sticky='new'
+    )
     startButton = Button(
         summary_frame, text='START',
-        command=lambda: histogram.start(root=root, max_timeouts=params['maxTimeouts'])
+        command=lambda: histogram.start(
+            # root=root,
+            max_timeouts=params['maxTimeouts'],
+            hook=[startButton, logCheckBox, probeButton]
+        )
     )
     startButton.grid(
         column=0, row=1,
@@ -959,17 +983,6 @@ def main() -> None:
     stopButton = Button(summary_frame, text='STOP', command=histogram.stop)
     stopButton.grid(
         column=1, row=1,
-        padx=(gui.WIDE_PAD, 0), pady=(gui.MED_PAD, 0), ipadx=gui.THIN_PAD, ipady=gui.THIN_PAD,
-        sticky='new'
-    )
-    probeButton = Button(
-        summary_frame, text='PROBE',
-        command=lambda: probe_pico(
-            root=root, mode=modes[modeVar.get()], max_timeouts=params['maxTimeouts']
-        )
-    )
-    probeButton.grid(
-        column=2, row=1,
         padx=(gui.WIDE_PAD, 0), pady=(gui.MED_PAD, 0), ipadx=gui.THIN_PAD, ipady=gui.THIN_PAD,
         sticky='new'
     )
