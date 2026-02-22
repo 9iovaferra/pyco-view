@@ -1,24 +1,24 @@
 [general]
-mode = adc
+mode = mntm
 histBounds = -25,110
 histBins = 120
-masterDelay = 10
+masterDelay = 15
 log = 0
 plot = 0
-filename = group1
+filename = test_meantimer
 dformat = csv
 includeCounter = 1
 includeAmplitude = 1
 includePeakToPeak = 1
 
 [trigger]
-target = A
-thresholdmV = -300
+target = ABCD
+thresholdmV = -200
 timebase = 1
 delaySeconds = 0
-autoTrigms = 12000
-preTrigSamples = 50
-postTrigSamples = 250
+autoTrigms = 1000
+preTrigSamples = 70
+postTrigSamples = 150
 maxTimeouts = 10
 
 [channelA]
@@ -29,7 +29,7 @@ chAcoupling = 2
 chAbandwidth = 0
 
 [channelB]
-chBenabled = 0
+chBenabled = 1
 chBrange = 5
 chBanalogOffset = 0.45
 chBcoupling = 2
@@ -43,7 +43,7 @@ chCcoupling = 2
 chCbandwidth = 0
 
 [channelD]
-chDenabled = 0
+chDenabled = 1
 chDrange = 5
 chDanalogOffset = 0.45
 chDcoupling = 2

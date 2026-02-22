@@ -232,6 +232,7 @@ class Histogram():
         self.mode: str = mode
         self.buffer: list[float] = []
         self.job: Thread = None
+        self.status: str = 'Idle'
         self.fig, self.ax = plt.subplots(figsize=(6, 4.3), layout='tight')
         self.bins = bins
         self.mdelay = 0 if mode == 'adc' else int(mdelay)
@@ -302,41 +303,121 @@ class Histogram():
 
         self.canvas.draw()
 
-    def save(self) -> None:
+    def save_as(self, fig: Optional[plt.Figure] = None) -> None:
+        if fig is None:
+            fig = self.fig
         figureSavePath = asksaveasfilename(
             initialdir=f'{DATA_DIR}/Data',
             filetypes=[('PNG', '*.png'), ('PDF', '*.pdf')]
         )
-        self.fig.savefig(figureSavePath)
+        fig.savefig(figureSavePath)
 
-    def start(self, max_timeouts: int, hook: list[Widget]):
-        # root: tk.Tk?
+    def status_update(self, event: tk.Event):
+        PV_STATUS.set(self.status)
+
+    def start(self, root: tk.Tk, max_timeouts: int, probe: Optional[bool] = False):
         """
-        Creates follower thread, attempts to setup communication with PicoScope,
+        Creates job thread, attempts to setup communication with PicoScope,
         exits if unsuccessful, starts thread otherwise
         """
-        PV_STATUS.set(f'Starting {key_from_value(modes, self.mode)}...')
-        # self.root = root
+        PV_STATUS.set(
+            'Probing PicoScope...' if probe \
+            else f'Starting {key_from_value(modes, self.mode)}...'
+        )
+        self.root = root
         self.root.update_idletasks()
-        self.cleanup()  # Scrape canvas & buffer if restarting
-        self.follower = Thread(target=self.follow, args=[max_timeouts])
+        if probe:
+            self.job = Thread(target=self.probe_pico, args=[max_timeouts])
+            self.probe = True
+        else:
+            self.cleanup()  # Scrape canvas & buffer if restarting
+            self.job = Thread(target=self.follow, args=[max_timeouts])
 
         match self.mode:
             case 'adc':
-                self.applet = adc.ADC(params)
+                self.applet = adc.ADC(params, probe=probe)
             case 'tdc':
-                self.applet = tdc.TDC(params)
+                self.applet = tdc.TDC(params, probe=probe)
             case 'mntm':
-                self.applet = meantimer.Meantimer(params)
+                self.applet = meantimer.Meantimer(params, probe=probe)
 
         err = self.applet.setup()
         if not all([e is None for e in err]):
             self.root.info_window(info=list(dict.fromkeys(err)))
             PV_STATUS.set('Error!')
             return
+
         self.stop_event.clear()
-        self.follower.start()
-        self.root.protocol('WM_DELETE_WINDOW', self.kill)
+        self.job.start()
+
+    def probe_pico(self, max_timeouts: int) -> None:
+        """
+        Collects one set of data from the PicoScope and visualizes it as
+        a plot of the individual signals in a separate window. The plot
+        can be saved as an image or .pdf file.
+        """
+        figure = None
+        self.timeout = max_timeouts
+
+        while figure is None and not self.stop_event.is_set():
+            if self.timeout == 0:
+                self.status = 'Too many timeouts. Please check your setup.'
+                self.root.event_generate('<<UpdateStatus>>', when='tail')
+                self.stop_event.set()
+                err = self.applet.stop()
+                if err:
+                    # self.root.info_window(info=[err])  # Bind this to event too
+                    self.status = 'Error!'
+                    self.root.event_generate('<<UpdateStatus>>', when='tail')
+                    self.stop_event.set()
+                break
+            figure, err = self.applet.run()
+            if not all([e is None for e in err]):
+                # self.root.info_window(info=list(dict.fromkeys(err)))
+                self.status = 'Error!'
+                self.root.event_generate('<<UpdateStatus>>', when='tail')
+                self.stop_event.set()
+                break
+            if figure is None and not self.stop_event.is_set():  # Avoid thread hanging when stopping
+                self.status = ('Probing PicoScope... '
+                               f'(trigger timeout {max_timeouts - self.timeout + 1})')
+                self.root.event_generate('<<UpdateStatus>>', when='tail')
+            self.timeout -= 1
+
+        if figure:
+            self.queue.put(figure)
+            self.root.event_generate('<<CreateProbeWindow>>', when='tail')
+            self.status = 'Idle'
+            self.root.event_generate('<<UpdateStatus>>', when='tail')
+
+    def create_probe_window(self) -> None:
+        figure = self.queue.get()
+        probe_window = tk.Toplevel()
+        probe_window.resizable(0, 0)
+        probe_window.title('Probe')
+        buttons_frame = Frame(probe_window, padding=(0, gui.THIN_PAD, 0, 0))
+        buttons_frame.grid(row=1, column=0, pady=(0, gui.WIDE_PAD), sticky='nes')
+        save_as_button = Button(
+            buttons_frame, text='Save as...', width=9,
+            command=lambda _: save_as(fig=figure)
+        )
+        close_button = Button(
+            buttons_frame, text='Close', width=9,
+            command=probe_window.destroy
+        )
+        save_as_button.grid(row=1, column=0, padx=(0, gui.THIN_PAD), sticky='nse')
+        close_button.grid(row=1, column=1, padx=(0, gui.WIDE_PAD), sticky='nse')
+        probe_canvas = FigureCanvasTkAgg(figure, master=probe_window)
+        probe_canvas.get_tk_widget().grid(row=0, column=0, sticky='nesw')
+        self.queue.task_done()
+
+        def save_as(fig: plt.Figure) -> None:
+            # TODO: fix AttributeError triggered when switching filetype and then `Cancel`ing
+            figureSavePath = asksaveasfilename(
+                initialdir=f'{PV_DIR}/Data',
+                filetypes=[('PNG', '*.png'), ('PDF', '*.pdf')]
+            )
+            fig.savefig(figureSavePath)
 
     def follow(self, max_timeouts: int) -> None:
         """
@@ -349,29 +430,32 @@ class Histogram():
 
         while not self.stop_event.is_set():
             if self.timeout == 0:
-                PV_STATUS.set('Too many timeouts, please check your setup.')
+                self.status = 'Too many timeouts. Please check your setup.'
+                self.root.event_generate('<<UpdateStatus>>', when='tail')
                 self.stop_event.set()
                 err = self.applet.stop()
                 if err:
-                    self.root.info_window(info=[err])
-                    PV_STATUS.set('Error!')
+                    # self.root.info_window(info=[err])
+                    self.status = 'Error!'
+                    self.root.event_generate('<<UpdateStatus>>', when='tail')
                 break
             data, err = self.applet.run()
             if not all([e is None for e in err]):
-                self.root.info_window(info=list(dict.fromkeys(err)))
-                PV_STATUS.set('Error!')
+                # self.root.info_window(info=list(dict.fromkeys(err)))
+                self.status = 'Error!'
+                self.root.event_generate('<<UpdateStatus>>', when='tail')
                 self.stop_event.set()
-                continue
-            elif data is None:
-                PV_STATUS.set(
-                    (f'Capture #{count}... skipping '
-                     f'(trigger timeout {max_timeouts - self.timeout + 1})')
-                )
+                break
+            if data is None and not self.stop_event.is_set():
+                self.status = (f'Capture #{count}... skipping '
+                               f'(trigger timeout {max_timeouts - self.timeout + 1})')
+                self.root.event_generate('<<UpdateStatus>>', when='tail')
                 self.timeout -= 1
                 continue
+
             self.timeout = max_timeouts
             self.queue.put((data, count))
-            self.place_on_canvas()
+            self.root.event_generate('<<PlaceOnCanvas>>', when='now')
             count += 1
 
     def place_on_canvas(self) -> None:
@@ -408,7 +492,9 @@ class Histogram():
             self.canvas.draw()
 
         if not self.stop_event.is_set():
-            PV_STATUS.set(f'Capture #{count}')
+            # PV_STATUS.set(f'Capture #{count}')
+            self.status = f'Capture #{count}'
+            self.root.event_generate('<<UpdateStatus>>', when='tail')
         self.queue.task_done()
 
     def cleanup(self) -> None:
@@ -427,16 +513,18 @@ class Histogram():
         PV_STATUS.set('Stopping...')
         self.root.update_idletasks()
         self.stop_event.set()
-        if self.follower is not None:
-            self.follower.join(timeout=0.1)
-            self.follower = None
         err = self.applet.stop()
-        PV_STATUS.set('Idle' if err is None and self.timeout != 0 else f'(!) {err}')
-
-    def kill(self) -> None:
-        self.stop()
-        self.root.quit()
-        self.root.destroy()
+        if self.job:
+            # self.job.join(timeout=0.1)
+            self.job.join()
+            self.job = None
+            PV_STATUS.set('Idle')
+        if err:
+            PV_STATUS.set('Error!')
+            self.root.info_window(info=[err])
+            return
+        # if self.probe and not self.queue.empty():
+        #     self.create_probe_window()
 
 
 def get_pico_info(root: tk.Tk) -> None:
@@ -449,6 +537,7 @@ def get_pico_info(root: tk.Tk) -> None:
 
 
 def probe_pico(root: tk.Tk, mode: str, max_timeouts: int) -> None:
+    # TODO: move this inside Histogram class to use Stop button??
     PV_STATUS.set('Probing PicoScope...')
     root.update_idletasks()
 
@@ -465,8 +554,13 @@ def probe_pico(root: tk.Tk, mode: str, max_timeouts: int) -> None:
         PV_STATUS.set('Error!')
         return
 
+    # print(vars(applet))
+    # err = applet.stop()
+    # return
+
     figure = None
     timeout = max_timeouts
+
     while figure is None:
         if timeout == 0:
             PV_STATUS.set('Too many timeouts. Please check your setup.')
@@ -934,7 +1028,7 @@ def main() -> None:
         padx=(gui.WIDE_PAD, 0), pady=(gui.WIDE_PAD, 0), ipady=gui.THIN_PAD / 2,
         sticky='nesw'
     )
-    histSaveBtn = Button(histogram_frame, text='Save as...', width=8, command=histogram.save)
+    histSaveBtn = Button(histogram_frame, text='Save as...', width=8, command=histogram.save_as)
     histSaveBtn.grid(
         column=5, row=1, rowspan=2,
         padx=(gui.WIDE_PAD, 0), pady=(gui.WIDE_PAD, 0), ipady=gui.THIN_PAD / 2,
@@ -962,10 +1056,16 @@ def main() -> None:
         padx=(gui.WIDE_PAD, 0), pady=(gui.MED_PAD, 0), ipadx=gui.THIN_PAD, ipady=gui.THIN_PAD,
         sticky='new'
     )
+    # probeButton = Button(
+    #     summary_frame, text='PROBE',
+    #     command=lambda: probe_pico(
+    #         root=root, mode=modes[modeVar.get()], max_timeouts=params['maxTimeouts']
+    #     )
+    # )
     probeButton = Button(
         summary_frame, text='PROBE',
-        command=lambda: probe_pico(
-            root=root, mode=modes[modeVar.get()], max_timeouts=params['maxTimeouts']
+        command=lambda: histogram.start(
+            root=root, max_timeouts=params['maxTimeouts'], probe=True
         )
     )
     probeButton.grid(
@@ -1183,6 +1283,9 @@ def main() -> None:
         pyi_splash_close()  # Close splash screen when app has loaded
     except NameError:
         pass
+    root.bind('<<UpdateStatus>>', histogram.status_update)
+    root.bind('<<CreateProbeWindow>>', lambda _: histogram.create_probe_window)
+    root.bind('<<PlaceOnCanvas>>', lambda _: histogram.place_on_canvas)
     root.mainloop()
 
 
