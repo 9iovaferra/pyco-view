@@ -338,7 +338,7 @@ class Histogram():
             return
         self.stop_event.clear()
         self.follower.start()
-        # Turn off `Start` and `Log acquisition` during run
+        # Turn off `Start`, `Probe` and `Log acquisition` during run
         _ = [widget.state(['disabled']) for widget in self.hook]
         self.root.protocol('WM_DELETE_WINDOW', self.kill)
 
@@ -956,12 +956,23 @@ def main() -> None:
         )
 
     """ Start/Stop job buttons """
+    probeButton = Button(
+        summary_frame, text='PROBE',
+        command=lambda: probe_pico(
+            root=root, mode=modes[modeVar.get()], max_timeouts=params['maxTimeouts']
+        )
+    )
+    probeButton.grid(
+        column=2, row=1,
+        padx=(gui.WIDE_PAD, 0), pady=(gui.MED_PAD, 0), ipadx=gui.THIN_PAD, ipady=gui.THIN_PAD,
+        sticky='new'
+    )
     startButton = Button(
         summary_frame, text='START',
         command=lambda: histogram.start(
             # root=root,
             max_timeouts=params['maxTimeouts'],
-            hook=[startButton, logCheckBox]
+            hook=[startButton, logCheckBox, probeButton]
         )
     )
     startButton.grid(
@@ -972,17 +983,6 @@ def main() -> None:
     stopButton = Button(summary_frame, text='STOP', command=histogram.stop)
     stopButton.grid(
         column=1, row=1,
-        padx=(gui.WIDE_PAD, 0), pady=(gui.MED_PAD, 0), ipadx=gui.THIN_PAD, ipady=gui.THIN_PAD,
-        sticky='new'
-    )
-    probeButton = Button(
-        summary_frame, text='PROBE',
-        command=lambda: probe_pico(
-            root=root, mode=modes[modeVar.get()], max_timeouts=params['maxTimeouts']
-        )
-    )
-    probeButton.grid(
-        column=2, row=1,
         padx=(gui.WIDE_PAD, 0), pady=(gui.MED_PAD, 0), ipadx=gui.THIN_PAD, ipady=gui.THIN_PAD,
         sticky='new'
     )
