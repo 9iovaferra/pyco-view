@@ -4,7 +4,7 @@ from picosdk.constants import PICO_STATUS, PICO_STATUS_LOOKUP
 from picosdk.functions import adc2mVV2, mV2adcV2
 from picosdk.PicoDeviceEnums import picoEnum as enums
 from pycoviewlib.constants import (
-    PV_DIR, chInputRanges, pCouplings, channelIDs, TriggerCondition,
+    DATA_DIR, chInputRanges, pCouplings, channelIDs, TriggerCondition,
     TriggerDirection, TriggerProperties,
 )
 from pycoviewlib.functions import log, detect_gate_open_closed, format_data
@@ -85,7 +85,7 @@ class Meantimer:
         self.probe = probe
         self.timestamp: str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
         if not self.probe:
-            self.datahandle: str = (f"{PV_DIR}/Data/{self.params['filename']}"
+            self.datahandle: str = (f"{DATA_DIR}/Data/{self.params['filename']}"
                                     f"_{self.timestamp}_data.{self.params['dformat']}")
             if self.params['log']:  # Creating loghandle if required
                 self.loghandle: str = f"{self.params['filename']}_{self.timestamp}_mntm_log.txt"

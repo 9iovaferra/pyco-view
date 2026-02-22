@@ -15,7 +15,7 @@ except ModuleNotFoundError:
 from PIL import ImageTk, Image
 from pycoviewlib.functions import parse_config, backup_config, key_from_value, get_timeinterval
 from pycoviewlib.constants import (
-    PV_DIR, channelIDs, dataFileTypes, modes, couplings, bandwidths, chInputRanges
+    PV_DIR, DATA_DIR, channelIDs, dataFileTypes, modes, couplings, bandwidths, chInputRanges
 )
 import pycoviewlib.gui_resources as gui
 from pycoviewlib.tkSliderWidget.tkSliderWidget import Slider
@@ -74,7 +74,7 @@ class App(tk.Tk):
         target.geometry(f'+{x}+{y}')
 
     def show_data_folder(self) -> None:
-        datapath = Path(f'{PV_DIR}/Data')
+        datapath = Path(f'{DATA_DIR}/Data')
         system(f'xdg-open {datapath}')
 
     def info_window(
@@ -304,7 +304,7 @@ class Histogram():
 
     def save(self) -> None:
         figureSavePath = asksaveasfilename(
-            initialdir=f'{PV_DIR}/Data',
+            initialdir=f'{DATA_DIR}/Data',
             filetypes=[('PNG', '*.png'), ('PDF', '*.pdf')]
         )
         self.fig.savefig(figureSavePath)
@@ -511,7 +511,7 @@ def probe_pico(root: tk.Tk, mode: str, max_timeouts: int) -> None:
 
     def saveas(fig: plt.Figure) -> None:
         figureSavePath = asksaveasfilename(
-            initialdir=f'{PV_DIR}/Data',
+            initialdir=f'{DATA_DIR}/Data',
             filetypes=[('PNG', '*.png'), ('PDF', '*.pdf')]
         )
         fig.savefig(figureSavePath)

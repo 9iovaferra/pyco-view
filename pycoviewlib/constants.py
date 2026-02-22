@@ -2,7 +2,8 @@ from picosdk.PicoDeviceEnums import picoEnum as enums
 from ctypes import Structure, c_int16, c_uint16, c_int32
 from pathlib import Path
 
-PV_DIR = Path('~/Documents/PycoView3KE/').expanduser()
+PV_DIR = Path('~/.local/share/pycoview/').expanduser()
+DATA_DIR = Path('~/Documents/PycoView/').expanduser()
 PYTHON = Path('~/.venv/bin/python3').expanduser()
 
 chInputRanges = [

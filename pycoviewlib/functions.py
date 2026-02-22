@@ -1,5 +1,5 @@
 """ Copyright (C) 2019 Pico Technology Ltd. """
-from pycoviewlib.constants import maxADC, PV_DIR
+from pycoviewlib.constants import maxADC, PV_DIR, DATA_DIR
 from dataclasses import dataclass
 from ctypes import c_int16, Array
 import numpy as np
@@ -142,7 +142,7 @@ def format_data(data: list[str | int | float], filetype: str) -> str:
 
 def log(loghandle: str, entry: str, time=False) -> None:
     """ Write to log file """
-    with open(f'{PV_DIR}/Data/{loghandle}', 'a') as logfile:
+    with open(f'{DATA_DIR}/Data/{loghandle}', 'a') as logfile:
         if time:
             logfile.write(f"[{dt.now().strftime('%H:%M:%S')}] {entry}\n")
         else:

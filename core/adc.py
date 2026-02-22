@@ -3,7 +3,7 @@ from picosdk.psospa import psospa as ps
 from picosdk.constants import PICO_STATUS, PICO_STATUS_LOOKUP
 from picosdk.functions import adc2mVV2, mV2adcV2
 from picosdk.PicoDeviceEnums import picoEnum as enums
-from pycoviewlib.constants import PV_DIR, chInputRanges, couplings, pCouplings, channelIDs
+from pycoviewlib.constants import DATA_DIR, chInputRanges, couplings, pCouplings, channelIDs
 from pycoviewlib.functions import (
     detect_gate_open_closed, calculate_charge, log, key_from_value, format_data
 )
@@ -86,7 +86,7 @@ class ADC:
         self.probe = probe
         self.timestamp: str = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
         if not self.probe:
-            self.datahandle: str = (f"{PV_DIR}/Data/{self.params['filename']}"
+            self.datahandle: str = (f"{DATA_DIR}/Data/{self.params['filename']}"
                                     f"_{self.timestamp}_data.{self.params['dformat']}")
             if self.params['log']:  # Creating loghandle if required
                 self.loghandle: str = f"{params['filename']}_{self.timestamp}_adc_log.txt"
