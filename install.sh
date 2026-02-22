@@ -6,9 +6,9 @@ APPS=$HOME/.local/share/applications
 mkdir -p $PYCOVIEW
 
 # Check if drivers exist, if not install them
-if ! {[ -f "/opt/picoscope/lib/libpicoipp.so" ] && \
-	  [ -f "/opt/picoscope/lib/libps6000a.so" ] && \
-	  [ -f "/opt/picoscope/lib/libpsospa.so" ]}
+if ! { [ -f "/opt/picoscope/lib/libpicoipp.so" ] && \
+	   [ -f "/opt/picoscope/lib/libps6000a.so" ] && \
+	   [ -f "/opt/picoscope/lib/libpsospa.so" ]; }
 then 
 	zenity --question \
 		--title="PycoView Installer" \
@@ -32,7 +32,7 @@ then
 fi
 
 # Move app in place
-mv $(pwd)/PycoView/* $PYCOVIEW/
+[ -d "$(pwd)/PycoView" ] && cp -r $(pwd)/PycoView/* $PYCOVIEW/
 
 mkdir -p $ICONS
 mkdir -p $APPS
@@ -54,7 +54,9 @@ printf %"s\n" "[Desktop Entry]" \
 	"Keywords[en]=Python;Physics;Cosmic rays;" > $APPS/pycoview.desktop
 
 chmod 644 $APPS/pycoview.desktop
-cp $APPS/pycoview.desktop $HOME/Desktop/
+ln -s $APPS/pycoview.desktop  $HOME/Desktop/
+ 
+ln -s $HOME/Documents/PycoView/Data/ $HOME/Desktop/
 
 cp -p $(pwd)/pycoview.png $ICONS/pycoview.png
 
