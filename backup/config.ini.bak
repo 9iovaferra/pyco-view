@@ -1,9 +1,9 @@
 [general]
-mode = tdc
-histBounds = 0,50
+mode = adc
+histBounds = -25,110
 histBins = 120
 masterDelay = 10
-log = 1
+log = 0
 plot = 0
 filename = group1
 dformat = csv
@@ -16,10 +16,10 @@ target = A
 thresholdmV = -300
 timebase = 1
 delaySeconds = 0
-autoTrigms = 5000
+autoTrigms = 12000
 preTrigSamples = 50
 postTrigSamples = 250
-maxTimeouts = 4
+maxTimeouts = 10
 
 [channelA]
 chAenabled = 1
