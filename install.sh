@@ -3,8 +3,6 @@
 PYCOVIEW=$HOME/.local/share/pycoview
 ICONS=$HOME/.icons
 APPS=$HOME/.local/share/applications
-PYTHON=$HOME/.venv/bin
-mkdir -p $PYCOVIEW
 
 # Check if drivers exist, if not install them
 if ! { [ -f "/opt/picoscope/lib/libpicoipp.so" ] && \
@@ -36,10 +34,14 @@ then
 	fi
 fi
 
+# Check Python setup
 [ ! -d "$HOME/.venv" ] && echo "Creating Python virtual environment..." && \
 	python3 -m venv $HOME/.venv
 
-$PYTHON/python3 -c "import picosdk" 2>/dev/null || $PYTHON/pip install $PYCOVIEW/pycoviewlib/picosdk/
+PYTHON=$HOME/.venv/bin
+
+$PYTHON/python3 -c "import picosdk" 2>/dev/null || $PYTHON/pip install $PYCOVIEW/pycoviewlib/picosdk/.
+$PYTHON/python3 -c "import matplotlib" 2>/dev/null || $PYTHON/pip install matplotlib
 
 # Move app in place
 [ -d "$(pwd)/PycoView" ] && cp -r $(pwd)/PycoView/* $PYCOVIEW/
@@ -87,5 +89,6 @@ zenity --info \
 	--ok-label="Close"
 
 unset PYCOVIEW
+unset PYTHON
 unset ICONS
 unset APPS
