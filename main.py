@@ -309,15 +309,13 @@ class Histogram():
         )
         self.fig.savefig(figureSavePath)
 
-    def start(self, max_timeouts: int):
-        # root: tk.Tk?
+    def start(self, max_timeouts: int, hook: list[Widget]):
         """
         Creates follower thread, attempts to setup communication with PicoScope,
         exits if unsuccessful, starts thread otherwise
         """
         self.hook = hook
         PV_STATUS.set(f'Starting {key_from_value(modes, self.mode)}...')
-        # self.root = root
         self.root.update_idletasks()
         self.cleanup()  # Scrape canvas & buffer if restarting
         self.follower = Thread(target=self.follow, args=[max_timeouts], daemon=True)
@@ -751,7 +749,6 @@ def main() -> None:
     summary_padding = {'padx': (gui.WIDE_PAD, 0), 'pady': gui.WIDE_PAD, 'ipadx': gui.THIN_PAD, 'ipady': 0}
     summary_frame.grid(column=0, row=0, **summary_padding, sticky='new')
     summary = Labelframe(summary_frame, text='Summary')
-    # summary.grid(column=0, row=0, columnspan=3, **gui.lbf_asym_padding, sticky='nesw')
     summary.grid(column=0, row=0, columnspan=3, pady=(0, gui.THIN_PAD), sticky='nesw')
 
     uiChLabels = dict.fromkeys(channelIDs)  # Can be updated to reflect channels on/off
@@ -970,7 +967,10 @@ def main() -> None:
     )
     startButton = Button(
         summary_frame, text='START',
-        command=lambda: histogram.start(max_timeouts=params['maxTimeouts'])
+        command=lambda: histogram.start(
+            max_timeouts=params['maxTimeouts'],
+            hook=[startButton, logCheckBox, probeButton]
+        )
     )
     startButton.grid(
         column=0, row=1,
