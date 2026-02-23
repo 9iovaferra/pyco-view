@@ -2,6 +2,9 @@
 /Data
 **/__pycache__
 /build
+pycoviewlib/picosdk/build
+pycoviewlib/picosdk/.sdkwarning
+pycoviewlib/picosdk/picosdk.egg-info
 
 # Misc
 PycoView
