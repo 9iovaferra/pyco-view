@@ -320,7 +320,7 @@ class Histogram():
         # self.root = root
         self.root.update_idletasks()
         self.cleanup()  # Scrape canvas & buffer if restarting
-        self.follower = Thread(target=self.follow, args=[max_timeouts])
+        self.follower = Thread(target=self.follow, args=[max_timeouts], daemon=True)
 
         match self.mode:
             case 'adc':
@@ -355,7 +355,7 @@ class Histogram():
             if self.timeout == 0:
                 PV_STATUS.set('Too many timeouts, please check your setup.')
                 self.stop_event.set()
-                _ = [widget.state(['normal']) for widget in self.hook]
+                _ = [widget.state(['!disabled']) for widget in self.hook]
                 err = self.applet.stop()
                 if err:
                     self.root.info_window(info=[err])
@@ -366,7 +366,7 @@ class Histogram():
                 self.root.info_window(info=list(dict.fromkeys(err)))
                 PV_STATUS.set('Error!')
                 self.stop_event.set()
-                _ = [widget.state(['normal']) for widget in self.hook]
+                _ = [widget.state(['!disabled']) for widget in self.hook]
                 continue
             elif data is None:
                 PV_STATUS.set(
@@ -440,7 +440,7 @@ class Histogram():
         if self.follower is not None:
             self.follower.join(timeout=0.1)
             self.follower = None
-        _ = [widget.state(['normal']) for widget in self.hook]
+        _ = [widget.state(['!disabled']) for widget in self.hook]
 
     def kill(self) -> None:
         self.stop()
