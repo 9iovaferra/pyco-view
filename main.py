@@ -309,7 +309,7 @@ class Histogram():
         )
         self.fig.savefig(figureSavePath)
 
-    def start(self, max_timeouts: int, hook: list[Widget]):
+    def start(self, max_timeouts: int):
         # root: tk.Tk?
         """
         Creates follower thread, attempts to setup communication with PicoScope,
@@ -949,7 +949,7 @@ def main() -> None:
     """ Start/Stop job buttons """
     startButton = Button(
         summary_frame, text='START',
-        command=lambda: histogram.start(root=root, max_timeouts=params['maxTimeouts'])
+        command=lambda: histogram.start(max_timeouts=params['maxTimeouts'])
     )
     startButton.grid(
         column=0, row=1,
