@@ -3,6 +3,7 @@
 PYCOVIEW=$HOME/.local/share/pycoview
 ICONS=$HOME/.icons
 APPS=$HOME/.local/share/applications
+PYTHON=$HOME/.venv/bin
 mkdir -p $PYCOVIEW
 
 # Check if drivers exist, if not install them
@@ -34,6 +35,11 @@ then
 		[[ -d "$PYCOVIEW/drivers" ]] && rm -rf $PYCOVIEW/drivers
 	fi
 fi
+
+[ ! -d "$HOME/.venv" ] && echo "Creating Python virtual environment..." && \
+	python3 -m venv $HOME/.venv
+
+$PYTHON/python3 -c "import picosdk" 2>/dev/null || $PYTHON/pip install $PYCOVIEW/pycoviewlib/picosdk/
 
 # Move app in place
 [ -d "$(pwd)/PycoView" ] && cp -r $(pwd)/PycoView/* $PYCOVIEW/
