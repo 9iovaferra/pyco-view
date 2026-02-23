@@ -43,26 +43,37 @@ mkdir -p $APPS
 mkdir -p $HOME/Documents/PycoView/Data
 
 # Create shortcuts
-printf %"s\n" "[Desktop Entry]" \
-	"Type=Application" \
-	"Name[it]=PycoView" \
-	"Name[en]=PycoView" \
-	"Comment[it]=Applicazione interattiva in Python per lo studio dei raggi cosmici" \
-	"Comment[en]=Interactive Python app for the study of cosmic rays" \
-	"Path=$PYCOVIEW" \
-	"Exec=$PYCOVIEW/PycoView" \
-	"Icon=pycoview" \
-	"Terminal=false" \
-	"Categories=Education;Science;" \
-	"Keywords[it]=Python;Fisica;Raggi cosmici;" \
-	"Keywords[en]=Python;Physics;Cosmic rays;" > $APPS/pycoview.desktop
+if [ -f "$(pwd)/PycoView/PycoView" ] || [ -f "$PYCOVIEW/PycoView" ]; then
+	printf %"s\n" "[Desktop Entry]" \
+		"Type=Application" \
+		"Name[it]=PycoView" \
+		"Name[en]=PycoView" \
+		"Comment[it]=Applicazione interattiva in Python per lo studio dei raggi cosmici" \
+		"Comment[en]=Interactive Python app for the study of cosmic rays" \
+		"Path=$PYCOVIEW" \
+		"Exec=$PYCOVIEW/PycoView" \
+		"Icon=pycoview" \
+		"Terminal=false" \
+		"Categories=Education;Science;" \
+		"Keywords[it]=Python;Fisica;Raggi cosmici;" \
+		"Keywords[en]=Python;Physics;Cosmic rays;" > $APPS/pycoview.desktop
+else
+	echo "(!) Missing executable"
+	exit 1
+fi
 
 chmod 644 $APPS/pycoview.desktop
-ln -s $APPS/pycoview.desktop  $HOME/Desktop/
+[ ! -f "$HOME/Desktop/pycoview.desktop" ] && ln -s $APPS/pycoview.desktop  $HOME/Desktop/
  
-ln -s $HOME/Documents/PycoView/Data $HOME/Desktop/
+[ ! -d "$HOME/Desktop/Data" ] && ln -s $HOME/Documents/PycoView/Data $HOME/Desktop/
 
-cp -p $(pwd)/PycoView/pycoview.png $ICONS/pycoview.png
+if [ -d "$(pwd)/PycoView" ]; then
+	cp -p $(pwd)/PycoView/pycoview.png $ICONS/pycoview.png
+elif [ -f "$(pwd)/pycoview.png" ]; then
+	cp -p $(pwd)/pycoview.png $ICONS/pycoview.png
+else
+	echo "(!) Missing app icon"
+fi
 
 zenity --info \
 	--title="PycoView Installer" \
