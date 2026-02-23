@@ -138,7 +138,7 @@ class App(tk.Tk):
         app_version.pack()
         link = Label(about, text='Github Repository', foreground='blue', cursor='hand2', anchor='center')
         link.pack(pady=(0, gui.THIN_PAD))
-        link.bind('<Button-1>', lambda _: open_new('https://github.com/9iovaferra/PycoView'))
+        link.bind('<Button-1>', lambda _: open_new('https://github.com/9iovaferra/pyco-view'))
         self.center(target=about)
 
     def delete_window(self) -> None:
@@ -494,6 +494,7 @@ def probe_pico(root: tk.Tk, mode: str, max_timeouts: int) -> None:
         probe_window = tk.Toplevel()
         probe_window.resizable(0, 0)
         probe_window.title('Probe')
+        probe_window.wm_iconphoto(False, root.dock_icon)
         probe_canvas = FigureCanvasTkAgg(figure, master=probe_window)
         probe_canvas.get_tk_widget().grid(row=0, column=0, sticky='nesw')
         buttons_frame = Frame(probe_window, padding=(0, gui.THIN_PAD, 0, 0))
