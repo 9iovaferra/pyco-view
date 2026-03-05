@@ -13,7 +13,7 @@ try:
 except ModuleNotFoundError:
     pass
 from PIL import ImageTk, Image
-from pycoviewlib.functions import parse_config, backup_config, key_from_value, get_timeinterval
+from pycoviewlib.functions import parse_config, backup_config, key_from_value, get_timeinterval, format_data
 from pycoviewlib.constants import (
     PV_DIR, DATA_DIR, channelIDs, dataFileTypes, modes, couplings, bandwidths, chInputRanges
 )
@@ -328,12 +328,23 @@ class Histogram():
             case 'mntm':
                 self.applet = meantimer.Meantimer(params)
 
-        err = self.applet.setup()
+        self.timestamp, err = self.applet.setup()
         if not all([e is None for e in err]):
             self.root.info_window(info=list(dict.fromkeys(err)))
             PV_STATUS.set('Error!')
             self.follower = None
             return
+        # Saving data with master delay as shown on histogram
+        if self.mode != 'adc':
+            self.datahandle: str = (f"{DATA_DIR}/Data/{params['filename']}_histo"
+                                    f"_{self.timestamp}_data.{params['dformat']}")
+            header = []
+            if params['includeCounter']:
+                header.append('n')
+            header.append('deltaT (ns)')
+            with open(self.datahandle, "a") as out:  # Creating data output file
+                out.write(format_data(header, params['dformat']))
+
         self.stop_event.clear()
         self.follower.start()
         # Turn off `Start`, `Probe` and `Log acquisition` during run
@@ -350,23 +361,27 @@ class Histogram():
         self.timeout = max_timeouts
 
         while not self.stop_event.is_set():
-            if self.timeout == 0:
-                PV_STATUS.set('Too many timeouts, please check your setup.')
-                self.stop_event.set()
-                _ = [widget.state(['!disabled']) for widget in self.hook]
-                err = self.applet.stop()
-                if err:
-                    self.root.info_window(info=[err])
-                    PV_STATUS.set('Error!')
-                break
-            data, err = self.applet.run()
+            # if self.timeout == 0:
+            #     PV_STATUS.set('Too many timeouts, please check your setup.')
+            #     self.stop_event.set()
+            #     _ = [widget.state(['!disabled']) for widget in self.hook]
+            #     err = self.applet.stop()
+            #     if err:
+            #         self.root.info_window(info=[err])
+            #         PV_STATUS.set('Error!')
+            #     break
+            data = [None,]
+            if params['includeCounter']:
+                data[0] = (count)
+                data.append(None)
+            data[-1], err = self.applet.run()
             if not all([e is None for e in err]):
                 self.root.info_window(info=list(dict.fromkeys(err)))
                 PV_STATUS.set('Error!')
                 self.stop_event.set()
                 _ = [widget.state(['!disabled']) for widget in self.hook]
                 continue
-            elif data is None:
+            elif data[-1] is None:
                 PV_STATUS.set(
                     (f'Capture #{count}... skipping '
                      f'(trigger timeout {max_timeouts - self.timeout + 1})')
@@ -374,7 +389,11 @@ class Histogram():
                 self.timeout -= 1
                 continue
             self.timeout = max_timeouts
-            self.queue.put((data, count))
+            self.queue.put((data[-1], count))
+            data[-1] += self.mdelay
+            if self.mode != 'adc':
+                with open(self.datahandle, 'a') as out:
+                    out.write(format_data(data, params['dformat']))
             self.place_on_canvas()
             count += 1
 
@@ -466,7 +485,7 @@ def probe_pico(root: tk.Tk, mode: str, max_timeouts: int) -> None:
             applet = tdc.TDC(params, probe=True)
         case 'mntm':
             applet = meantimer.Meantimer(params, probe=True)
-    err = applet.setup()
+    timestamp, err = applet.setup()
     if not all([e is None for e in err]):
         root.info_window(info=list(dict.fromkeys(err)))
         PV_STATUS.set('Error!')
@@ -821,7 +840,7 @@ def main() -> None:
     Label(summary, textvariable=ui_textvar['autoTrigms'], anchor='e').grid(
         column=1, row=9, columnspan=4, padx=0, pady=(gui.LINE_PAD, 0), sticky='ew'
     )
-    Label(summary, text='Max. timeouts').grid(
+    Label(summary, text='Max. timeouts (Probe)').grid(
         column=0, row=10, padx=(gui.THIN_PAD, 0), pady=(gui.LINE_PAD, 0), sticky='w'
     )
     Label(summary, textvariable=ui_textvar['maxTimeouts'], anchor='e').grid(
@@ -1080,7 +1099,7 @@ def main() -> None:
         id='maxTimeouts',
         from_to=(3, 100),
         step=1,
-        prompt='Max. timeouts',
+        prompt='Max. timeouts (Probe)',
         default=params['maxTimeouts'],
         validate='key',
         validatecommand=(root.register(gui.validate_bins), '%P')
