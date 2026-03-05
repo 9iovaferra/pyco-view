@@ -93,7 +93,7 @@ def detect_gate_open_closed(
     gateChX = {
         'open': {'mV': threshold, 'ns': 0.0, 'index': 0},
         'closed': {'mV': threshold, 'ns': 0.0, 'index': 0}
-        }
+    }
     hit = 0
     minValue = min(buffer)
     minValueIndex = buffer.index(minValue)
