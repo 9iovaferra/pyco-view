@@ -293,7 +293,7 @@ class Meantimer:
 
         self.timeIntervalns = c_double(self.timeIntervalns.value * 1000000000)  # to nanoseconds
 
-        return err
+        return self.timestamp, err
 
     def run(self) -> tuple[float | None, str | None]:
         err = []
@@ -403,7 +403,7 @@ class Meantimer:
             gate['A']['open']['ns'] + (gate['B']['open']['ns'] - gate['A']['open']['ns']) / 2,
             gate['C']['open']['ns'] + (gate['D']['open']['ns'] - gate['C']['open']['ns']) / 2
         )
-        deltaT = delayBounds[1] - delayBounds[0]
+        deltaT = round(delayBounds[1] - delayBounds[0], 1)
         data.append(deltaT)
 
         if self.params['log'] and not self.probe:

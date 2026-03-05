@@ -318,7 +318,7 @@ class TDC:
 
         self.timeIntervalns = c_double(self.timeIntervalns.value * 1000000000)  # to nanoseconds
 
-        return err
+        return self.timestamp, err
 
     def run(self) -> tuple[float | None, str | None]:
         err = []
@@ -413,7 +413,7 @@ class TDC:
         data = []
         if self.params['includeCounter']:
             data.append(self.count)
-        deltaT = gate[self.targets[1]]['open']['ns'] - gate[self.targets[0]]['open']['ns']
+        deltaT = round(gate[self.targets[1]]['open']['ns'] - gate[self.targets[0]]['open']['ns'], 1)
         data.append(deltaT)
 
         if self.params['log'] and not self.probe:

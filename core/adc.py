@@ -248,7 +248,7 @@ class ADC:
 
         self.timeIntervalns = c_double(self.timeIntervalns.value * 1000000000)  # to nanoseconds
 
-        return err
+        return self.timestamp, err
 
     def run(self) -> tuple[float | None, list[str] | None] | plt.Figure:
         err = []
@@ -350,15 +350,15 @@ class ADC:
             data.append(self.count)
         if self.params['includeAmplitude'] or self.probe:
             amplitude = abs(min(bufferSignalmV))
-            data.append(amplitude)
+            data.append(round(amplitude, 3))
         if self.params['includePeakToPeak'] or self.probe:
             peakToPeak = abs(min(bufferSignalmV)) \
                 - abs(max(bufferSignalmV[gate['open']['index']:gate['closed']['index']]))
-            data.append(peakToPeak)
-        charge = calculate_charge(
+            data.append(round(peakToPeak, 3))
+        charge = round(calculate_charge(
             bufferSignalmV, (gate['open']['index'], gate['closed']['index']),
             self.timeIntervalns.value, self.sigCoupling
-        )
+        ), 2)
         data.append(charge)
 
         """ Logging capture results """
