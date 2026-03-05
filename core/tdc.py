@@ -68,7 +68,7 @@ def plot_data(
     plt.fill_between(
         np.arange(
             gate[targets[0]]['open']['ns'],
-            gate[targets[1]]['open']['ns'],
+            gate[targets[1]]['open']['ns'] + timeIntervalns / 2,
             timeIntervalns
         ),
         yLowerLim, yUpperLim,
@@ -123,10 +123,11 @@ class TDC:
         self.actionAdd = enums.PICO_ACTION['PICO_ADD']
         self.actionClearAdd = self.actionClearAll | self.actionAdd
         self.downsampleModeRaw = enums.PICO_RATIO_MODE['PICO_RATIO_MODE_RAW']
+        self.channelsOn = [id for id in channelIDs if self.params[f'ch{id}enabled']]
         self.targets = params['target']
         self.nTargets = len(params['target'])
-        self.analogOffset = {id: params[f'ch{id}analogOffset'] * 1000 for id in self.targets}
-        self.chRange = {id: chInputRanges[params[f'ch{id}range']] * 1000000 for id in self.targets}
+        self.analogOffset = {id: params[f'ch{id}analogOffset'] * 1000 for id in self.channelsOn}
+        self.chRange = {id: chInputRanges[params[f'ch{id}range']] * 1000000 for id in self.channelsOn}
         self.autoTrigms = params['autoTrigms']
         self.preTrigSamples = params['preTrigSamples']
         self.postTrigSamples = params['postTrigSamples']
@@ -157,8 +158,8 @@ class TDC:
     def setup(self) -> str | None:
         err = []
 
-        if self.nTargets != 2:
-            return err.append(f'Expected 2 trigger targets, got {self.nTargets}')
+        if self.nTargets < 1:
+            return '', [f'Expected at least 1 trigger targets, got {self.nTargets}']
 
         # Logging runtime parameters
         if self.params['log'] and not self.probe:
@@ -231,7 +232,7 @@ class TDC:
             self.params['thresholdmV'] + self.analogOffset[id],
             self.chRange[id],
             self.maxADC
-        ) for id in self.targets}
+        ) for id in self.channelsOn}
 
         """ Setting up advanced trigger on target channels.
         ps.psospaSetTriggerChannelConditions(
@@ -352,7 +353,7 @@ class TDC:
 
         buffers = {'A': bufferAMax, 'C': bufferCMax}
 
-        for idx, name in enumerate(self.targets):
+        for idx, name in enumerate(self.channelsOn):
             self.status[f'setDataBuffer{name}'] = ps.psospaSetDataBuffer(
                 self.chandle,
                 channelIDs.index(name),                              # source
@@ -378,13 +379,13 @@ class TDC:
         err.append(self.__check_health(self.status['getValues'], stop=True))
 
         """ Convert ADC counts data to mV """
-        bufferChAmV = adc2mVV2(bufferAMax, self.chRange[self.targets[0]], self.maxADC)
-        bufferChCmV = adc2mVV2(bufferCMax, self.chRange[self.targets[1]], self.maxADC)
+        bufferChAmV = adc2mVV2(bufferAMax, self.chRange[self.channelsOn[0]], self.maxADC)
+        bufferChCmV = adc2mVV2(bufferCMax, self.chRange[self.channelsOn[1]], self.maxADC)
 
         """ Removing the analog offset from data points """
         thresholdmV = {
             id: (self.thresholdADC[id] * (self.chRange[id] / 1000000)) \
-            / self.maxADC.value - self.analogOffset[id] for id in self.targets
+            / self.maxADC.value - self.analogOffset[id] for id in self.channelsOn
         }
         for i in range(self.rmaxSamples.value):
             bufferChAmV[i] -= self.analogOffset['A']
@@ -398,22 +399,27 @@ class TDC:
         )
 
         """ Detect where the threshold was hit (both rising & falling edge) """
-        gate: dict[str, dict[str, float | int]] = {id: {} for id in self.targets}
-        for id, buffer in zip(self.targets, [bufferChAmV, bufferChCmV]):
+        gate: dict[str, dict[str, float | int]] = {id: {} for id in self.channelsOn}
+        for id, buffer in zip(self.channelsOn, [bufferChAmV, bufferChCmV]):
             gate[id] = detect_gate_open_closed(
                 buffer, time, thresholdmV[id], self.maxSamples, self.timeIntervalns.value
             )
+
         # Skip current acquisition if trigger timed out (all gates open at 0.0ns)
         if all([g['open']['ns'] == 0.0 for g in gate.values()]):
             if self.params['log'] and not self.probe:
                 to_be_logged.append('Skipping (trigger timeout).')
             return None, [None]
+        elif any([g['open']['index'] == 0 for g in gate.values()]):
+            if self.params['log'] and not self.probe:
+                to_be_logged.append('Skipping (missing gate).')
+            return 1, [None]
 
         """ Calculating relevant data """
         data = []
         if self.params['includeCounter']:
             data.append(self.count)
-        deltaT = round(gate[self.targets[1]]['open']['ns'] - gate[self.targets[0]]['open']['ns'], 1)
+        deltaT = round(gate[self.channelsOn[1]]['open']['ns'] - gate[self.channelsOn[0]]['open']['ns'], 1)
         data.append(deltaT)
 
         if self.params['log'] and not self.probe:
@@ -430,7 +436,7 @@ class TDC:
                 out.write(format_data(data, self.params['dformat']))
         else:
             figure = plot_data(
-                bufferChAmV, bufferChCmV, self.targets, gate, time, deltaT,
+                bufferChAmV, bufferChCmV, self.channelsOn, gate, time, deltaT,
                 self.timeIntervalns.value, f'TDC Probe {self.timestamp}'
             )
             return figure, err

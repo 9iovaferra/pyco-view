@@ -388,6 +388,12 @@ class Histogram():
                 )
                 self.timeout -= 1
                 continue
+            elif data[-1] == 1:  # Missing gate
+                PV_STATUS.set(
+                    (f'Capture #{count}... skipping '
+                     f'(missing start or stop)')
+                )
+                continue
             self.timeout = max_timeouts
             self.queue.put((data[-1], count))
             data[-1] += self.mdelay
@@ -504,6 +510,9 @@ def probe_pico(root: tk.Tk, mode: str, max_timeouts: int) -> None:
                 f'Probing PicoScope... (trigger timeout {max_timeouts - timeout + 1})'
             )
             root.update_idletasks()
+        elif figure == 1:  # Missing gate
+            figure = None
+            continue
         timeout -= 1
     if not all([e is None for e in err]):
         root.info_window(info=list(dict.fromkeys(err)))
