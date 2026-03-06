@@ -11,6 +11,7 @@ pyi.run([
     '--onefile',
     '--clean',
     '--hidden-import=PIL._tkinter_finder',
+    '--hidden-import=matplotlib.backends.backend_pdf',
     '--name=PycoView',
     '--noconsole',
     '--distpath=./',
