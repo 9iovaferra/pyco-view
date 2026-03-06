@@ -119,12 +119,14 @@ class App(tk.Tk):
 
     def open_about_window(self) -> None:
         about = tk.Toplevel()
-        about.geometry('250x200')
+        about.geometry('260x230')
         about.resizable(0, 0)
         about.title('About')
         about.wm_iconphoto(False, self.dock_icon)
         title = Label(about, text='PycoView', font=('Segoe Ui Bold', 16), anchor='center')
         title.pack(expand=1, fill='x', pady=(gui.THIN_PAD, 0))
+        app_version = Label(about, text='v2.1-rc', font=('Segoe Ui', 11), anchor='center')
+        app_version.pack()
         pycoview_logo = Image.open(f'{PV_DIR}/logo.png')
         RESIZE_FACTOR = 5
         LOGO_W, LOGO_H = pycoview_logo.size
@@ -133,10 +135,13 @@ class App(tk.Tk):
         )
         logo = Label(about, image=logo_img, anchor='center')
         logo.image = logo_img
-        logo.pack(expand=1, fill='both', pady=gui.THIN_PAD)
-        app_version = Label(about, text='v2.0', anchor='center')
-        app_version.pack()
-        link = Label(about, text='Github Repository', foreground='blue', cursor='hand2', anchor='center')
+        logo.pack(expand=1, fill='both', pady=gui.MED_PAD)
+        author = Label(about, text='Giovanni Ferrari', font=('Segoe Ui', 11), anchor='center')
+        author.pack()
+        link = Label(
+            about, text='GitHub repository ↗', font=('Segoe Ui', 11, 'underline'),
+            foreground='blue', cursor='hand2', anchor='center'
+        )
         link.pack(pady=(0, gui.THIN_PAD))
         link.bind('<Button-1>', lambda _: open_new('https://github.com/9iovaferra/pyco-view'))
         self.center(target=about)
