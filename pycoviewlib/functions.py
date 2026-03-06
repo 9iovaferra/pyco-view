@@ -1,4 +1,3 @@
-""" Copyright (C) 2019 Pico Technology Ltd. """
 from pycoviewlib.constants import maxADC, PV_DIR, DATA_DIR
 from dataclasses import dataclass
 from ctypes import c_int16, Array
@@ -34,7 +33,7 @@ def parse_config(config: Optional[str] = 'config.ini') -> dict:
                 params[p[0]] = int(p[1])
             elif _isfloat(p[1]):
                 params[p[0]] = float(p[1])
-            elif p[1].isalpha() or p[0] == 'filename':
+            elif p[1].isalpha() or any(['filename' in p[0], '_sg' in p[1]]):
                 params[p[0]] = p[1]
             else:
                 params[p[0]] = list(int(v) for v in p[1].split(','))

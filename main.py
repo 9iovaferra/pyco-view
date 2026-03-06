@@ -328,9 +328,9 @@ class Histogram():
         match self.mode:
             case 'adc':
                 self.applet = adc.ADC(params)
-            case 'tdc':
+            case 'tdc' | 'tdc_sg':
                 self.applet = tdc.TDC(params)
-            case 'mntm':
+            case 'mntm' | 'mntm_sg':
                 self.applet = meantimer.Meantimer(params)
 
         self.timestamp, err = self.applet.setup()
@@ -492,9 +492,9 @@ def probe_pico(root: tk.Tk, mode: str, max_timeouts: int) -> None:
     match mode:
         case 'adc':
             applet = adc.ADC(params, probe=True)
-        case 'tdc':
+        case 'tdc' | 'tdc_sg':
             applet = tdc.TDC(params, probe=True)
-        case 'mntm':
+        case 'mntm' | 'mntm_sg':
             applet = meantimer.Meantimer(params, probe=True)
     timestamp, err = applet.setup()
     if not all([e is None for e in err]):
@@ -738,11 +738,11 @@ def main() -> None:
     topFrame.columnconfigure(2, weight=3)
 
     Label(topFrame, text='Mode:').grid(column=0, row=0, sticky='w')
-    modeVar = tk.StringVar(value=key_from_value(modes, params['mode']))
+    modeVar = tk.StringVar(value=[k for k, v in modes.items() if v == params['mode']][0])
     modeSelector = OptionMenu(
         topFrame,
         modeVar,
-        key_from_value(modes, params['mode']),
+        [k for k, v in modes.items() if v == params['mode']][0],
         *tuple(modes.keys()),
     )
     modeSelector.grid(column=1, row=0, padx=gui.WIDE_PAD, sticky='w')
@@ -1188,7 +1188,7 @@ def main() -> None:
                 modes[modeVar.get()],
                 hist=histogram,
                 hook_widgets=[
-                    (masterDelay, ('tdc', 'mntm')),
+                    (masterDelay, ('tdc', 'mntm', 'tdc_sg', 'mntm_sg')),
                     (includeAmplitude, 'adc'),
                     (includePeakToPeak, 'adc')
                 ]

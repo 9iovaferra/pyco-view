@@ -15,7 +15,13 @@ maxADC = 32512
 
 channelIDs = ['A', 'B', 'C', 'D']
 dataFileTypes = ['txt', 'csv']
-modes = {'ADC': 'adc', 'TDC': 'tdc', 'Meantimer': 'mntm'}
+modes = {
+    'ADC': 'adc',
+    'TDC': 'tdc',
+    'TDC (single-gate)': 'tdc_sg',
+    'Meantimer': 'mntm',
+    'Meantimer (single-gate)': 'mntm_sg'
+}
 timebases = {
     '200 ps': 200,
     '400 ps': 400,
